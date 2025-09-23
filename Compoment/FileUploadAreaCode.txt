@@ -1,0 +1,212 @@
+self.uploadFrame = QtWidgets.QFrame(VoiceChanger)
+self.uploadFrame.setFrameShape(QtWidgets.QFrame.StyledPanel)
+self.uploadFrame.setFrameShadow(QtWidgets.QFrame.Raised)
+self.uploadFrame.setObjectName("uploadFrame")
+self.verticalLayout_2 = QtWidgets.QVBoxLayout(self.uploadFrame)
+self.verticalLayout_2.setSpacing(15)
+self.verticalLayout_2.setObjectName("verticalLayout_2")
+self.horizontalLayout_7 = QtWidgets.QHBoxLayout()
+self.horizontalLayout_7.setContentsMargins(-1, -1, -1, 0)
+self.horizontalLayout_7.setObjectName("horizontalLayout_7")
+spacerItem = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
+self.horizontalLayout_7.addItem(spacerItem)
+self.clearButton = PushButton(self.uploadFrame)
+self.clearButton.setObjectName("clearButton")
+self.horizontalLayout_7.addWidget(self.clearButton)
+self.verticalLayout_2.addLayout(self.horizontalLayout_7)
+spacerItem1 = QtWidgets.QSpacerItem(20, 40, QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Expanding)
+self.verticalLayout_2.addItem(spacerItem1)
+self.uploadIconLabel = QtWidgets.QLabel(self.uploadFrame)
+font = QtGui.QFont()
+font.setFamily("Segoe UI")
+font.setPointSize(36)
+self.uploadIconLabel.setFont(font)
+self.uploadIconLabel.setAlignment(QtCore.Qt.AlignCenter)
+self.uploadIconLabel.setObjectName("uploadIconLabel")
+self.verticalLayout_2.addWidget(self.uploadIconLabel)
+self.uploadTextLabel_1 = QtWidgets.QLabel(self.uploadFrame)
+font = QtGui.QFont()
+font.setFamily("Microsoft JhengHei UI")
+font.setPointSize(-1)
+font.setBold(True)
+font.setWeight(62)
+self.uploadTextLabel_1.setFont(font)
+self.uploadTextLabel_1.setAlignment(QtCore.Qt.AlignCenter)
+self.uploadTextLabel_1.setObjectName("uploadTextLabel_1")
+self.verticalLayout_2.addWidget(self.uploadTextLabel_1)
+self.uploadTextLabel_3 = QtWidgets.QLabel(self.uploadFrame)
+font = QtGui.QFont()
+font.setFamily("Microsoft JhengHei UI")
+font.setPointSize(-1)
+font.setBold(False)
+font.setWeight(50)
+self.uploadTextLabel_3.setFont(font)
+self.uploadTextLabel_3.setAlignment(QtCore.Qt.AlignCenter)
+self.uploadTextLabel_3.setObjectName("uploadTextLabel_3")
+self.verticalLayout_2.addWidget(self.uploadTextLabel_3)
+self.uploadTextLabel_2 = QtWidgets.QLabel(self.uploadFrame)
+font = QtGui.QFont()
+font.setFamily("Microsoft JhengHei UI")
+font.setPointSize(-1)
+font.setBold(False)
+font.setWeight(50)
+self.uploadTextLabel_2.setFont(font)
+self.uploadTextLabel_2.setAlignment(QtCore.Qt.AlignCenter)
+self.uploadTextLabel_2.setObjectName("uploadTextLabel_2")
+self.verticalLayout_2.addWidget(self.uploadTextLabel_2)
+spacerItem2 = QtWidgets.QSpacerItem(20, 40, QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Expanding)
+self.verticalLayout_2.addItem(spacerItem2)
+self.mainLayout.addWidget(self.uploadFrame)
+
+ # 设置为可点击，可拖拽
+self.setAcceptDrops(True)
+self.uploadFrame.setCursor(Qt.PointingHandCursor)  # 显示为可点击
+self.uploadFrame.mousePressEvent = self.uploa
+# 设置隐藏的滑动窗，用来显示上传的文件
+self.pathScroll = HiddenScrollArea()
+self.verticalLayout_2.addWidget(self.pathScroll)
+
+self.tabWidget.setCurrentIndex(0)
+self.HistoryScroll.setWidgetResizable(True)  # 允许内部控件自适应
+self.SubListContainer = QWidget()
+self.SubListContainer.setObjectName("HistoryCardContainer")
+# self.container.setFixedWidth(280)  # 宽度略小于滚动区域以避免水平滚动条
+self.historyLayout = QVBoxLayout()
+self.historyLayout.setAlignment(Qt.AlignTop)  # 内容顶部对齐
+self.SubListContainer.setLayout(self.historyLayout)
+# 将容器添加到滚动区域
+self.HistoryScroll.setWidget(self.SubListContainer)
+self.HistoryScroll.setStyleSheet(
+    """ QScrollArea{ background: transparent;border: None; } #HistoryCardContainer{ background: transparent; } """)
+
+
+    def add_voice_list(self, paths):
+        for path in paths:
+            self.pathScroll.add_item(path)
+
+    def upload_files(self, event):
+        print("选择音频文件")
+        files, _ = QFileDialog.getOpenFileNames(
+            self,
+            "Select Audio Files",
+            "",
+            "Audio Files (*.mp3 *.wav *.flac *.m4a *.ogg);;All Files (*)"
+        )
+        self.add_voice_list(files)
+        # self.voice_paths.extend(files)
+
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasUrls():
+            print("enter")
+            self.uploadFrame.setStyleSheet("""QFrame#uploadFrame{
+                    background-color: #F8F8F8;
+                    border: 2px dashed #a1bbd7;
+                    border-radius: 12px;
+            }""")
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dragLeaveEvent(self, event):
+        self.uploadFrame.setStyleSheet("""QFrame#uploadFrame{
+                        background-color: #FFFFFF;
+                        border: 2px dashed #CED4DA;
+                        border-radius: 12px;
+                }""")
+
+    def dropEvent(self, event):
+        pos = event.pos()
+        self.uploadFrame.setStyleSheet("""QFrame#uploadFrame{
+                background-color: #FFFFFF;
+                border: 2px dashed #CED4DA;
+                border-radius: 12px;
+        }""")
+        if not self.uploadFrame.geometry().contains(pos):
+            print("Drop outside uploadFrame, ignored.")
+            return
+
+        urls = event.mimeData().urls()
+        paths = [url.toLocalFile() for url in urls]
+        print(paths)
+
+        audio_paths = []
+        for path in paths:
+            if os.path.isdir(path):
+                audio_paths.extend(self.get_audio_files_in_folder(path))
+            elif self.is_audio_file(path):
+                audio_paths.append(path)
+        self.add_voice_list(audio_paths)
+        # self.voice_paths.extend(audio_paths)
+
+    def get_audio_files_in_folder(self, folder):
+        audio_exts = ('.mp3', '.wav', '.flac', '.m4a', '.ogg')
+        return [
+            os.path.join(root, file)
+            for root, _, files in os.walk(folder)
+            for file in files
+            if file.lower().endswith(audio_exts)
+        ]
+
+    def is_audio_file(self, path):
+        return path.lower().endswith(('.mp3', '.wav', '.flac', '.m4a', '.ogg'))
+
+class HiddenScrollArea(QScrollArea):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.max_height = 400
+        self.setWidgetResizable(True)
+
+        # 内容容器
+        self.container = QWidget()
+        self.container.setObjectName("ScrollContainer")
+        self.setWidget(self.container)
+
+        self.setContentsMargins(0,0,0,0)
+        self.container.setContentsMargins(0,0,0,0)
+        # 布局和 QListWidget
+        self.layout = QVBoxLayout(self.container)
+        self.layout.setContentsMargins(0,0,0,0)
+        self.layout.setSpacing(0)
+        self.list_widget = ListWidget()
+        self.list_widget.setContentsMargins(0,0,0,0)
+        self.layout.addWidget(self.list_widget)
+
+        self.setStyleSheet("""
+            QScrollArea{
+                background: transparent;
+            }
+            #ScrollContainer{
+                background: transparent;
+            }
+            """
+        )
+        # 初始化高度为 0
+        self.setFixedHeight(0)
+        self.voice_paths = []
+        # 样式可选
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.setFrameShape(QScrollArea.NoFrame)
+
+    def add_item(self, text: str):
+        self.voice_paths.append(text)
+        self.list_widget.addItem(QListWidgetItem(os.path.basename(text)))
+        # self.list_widget.item(0).setBackground(QBrush(QColor(0, 255, 0)))
+        self.update_height()
+
+    def clear_files(self):
+        self.voice_paths = []
+        self.list_widget.clear()
+        self.setFixedHeight(0)
+
+    def update_height(self):
+        count = self.list_widget.count()
+        if count == 0:
+            self.setFixedHeight(0)
+            return
+
+        # 获取单个 item 的高度
+        item_height = self.list_widget.sizeHintForRow(0)
+        spacing = self.list_widget.spacing() if hasattr(self.list_widget, "spacing") else 5
+        new_height = min((count-1) * item_height + spacing + 65, self.max_height)
+        self.setFixedHeight(new_height)
