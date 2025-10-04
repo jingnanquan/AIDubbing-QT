@@ -1,4 +1,5 @@
 import os
+from typing import Any
 
 from Service.dubbingMain.llmAPI import LLMAPI
 from Service.generalUtils import time_str_to_ms
@@ -28,7 +29,7 @@ def parse_subtitle(subtitle_path) -> list:
         return []
 
 
-def parse_subtitle_uncertain(subtitle_path) -> [list, list]:
+def parse_subtitle_uncertain(subtitle_path) -> tuple[list[Any], list[Any]]:
     try:
         with open(subtitle_path, "r", encoding="utf-8-sig") as f:
             content = f.read().strip()

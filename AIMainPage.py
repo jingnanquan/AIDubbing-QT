@@ -44,6 +44,8 @@ class LazyLoadThread(QThread):
             from ProjectCompoment.ProjectInterface import ProjectInterface
         elif self.index == 5:
             from AnnotationInterface import AnnotationInterface
+        elif self.index == 6:
+            from DubbingInterface import DubbingInterface
         self.finished.emit(True)
 
 class placeholder_widget(QFrame):
@@ -88,6 +90,9 @@ class placeholder_widget(QFrame):
         elif self.index == 5:
             from AnnotationInterface import AnnotationInterface
             self.main_widget = AnnotationInterface()
+        elif self.index == 6:
+            from DubbingInterface import DubbingInterface
+            self.main_widget = DubbingInterface()
 
         self.label.hide()
         self.layout().addWidget(self.main_widget)
@@ -137,11 +142,14 @@ class Window(SplitFluentWindow):
         self.VoiceChangerInterface = placeholder_widget("changer",2)
         self.ToolsInterface = placeholder_widget("tools",3)
         self.AnnotationInterface = placeholder_widget("annotation",5)
+        self.DubbingInterface = placeholder_widget("dubbing",6)
 
         # 先添加占位符，实际组件延迟创建
         self.addSubInterface(self.AnnotationInterface, FIF.TILES, '批量标注')
+        self.addSubInterface(self.DubbingInterface, FIF.VIDEO, '批量配音')
         self.addSubInterface(self.SubtitleInterface, FIF.HOME, 'AI配音')
         self.addSubInterface(self.VoiceChangerInterface, FIF.MUSIC_FOLDER, 'AI声线转换')
+
 
         self.addSubInterface(self.ToolsInterface, FIF.CLIPPING_TOOL, '工具箱')
         self.navigationInterface.addSeparator()

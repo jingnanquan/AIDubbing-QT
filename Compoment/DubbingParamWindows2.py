@@ -10,7 +10,6 @@ from PyQt5.QtWidgets import (
     QApplication, QScrollArea
 )
 from PyQt5.QtCore import Qt, pyqtSignal, QUrl
-from pypinyin import pinyin
 from qfluentwidgets import ComboBox, PushButton, LineEdit
 from qfluentwidgets.multimedia import SimpleMediaPlayBar
 
@@ -189,6 +188,8 @@ class VoiceSelectorWindow(QMainWindow):
                 col = 0
                 row += 1
 
+        self.adjust_width()
+
     def return_voice(self, voice_name):
         self.hide()
         self.return_signal.emit(voice_name)
@@ -211,6 +212,8 @@ class VoiceSelectorWindow(QMainWindow):
             self.audio_bar.player.setSource(QUrl.fromLocalFile(file_path))
         self.audio_bar.play()
 
+    def adjust_width(self):
+        self.setMinimumWidth(self.HistoryCardContainer.sizeHint().width()+20)
 
 
 """

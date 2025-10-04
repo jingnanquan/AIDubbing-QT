@@ -262,6 +262,8 @@ class FileUploadArea(QFrame):
             self.file_scroll.clear_files()
             self.file_scroll.add_items(self.file_paths)
 
+        self.filesAdded.emit(self.file_paths)
+
 
 
     def clear_files(self):
