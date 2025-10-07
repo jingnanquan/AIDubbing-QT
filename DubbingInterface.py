@@ -1,7 +1,7 @@
 from qfluentwidgets import RadioButton, LineEdit, BodyLabel, ComboBox
 
 from Compoment.DubbingParamWindows2 import spare_voices, prepared_voices, VoiceSelectorWindow
-from Config import ROLE_ANNO_FOLDER
+from Config import ROLE_ANNO_FOLDER, RESULT_OUTPUT_FOLDER
 import sys
 import os
 import re
@@ -19,9 +19,10 @@ from Compoment.DraggableTextEdit import DraggableTextEdit
 from Compoment.FileUploadArea import FileUploadArea
 from Compoment.PathDialog import PrettyPathDialog
 from Service.datasetUtils import datasetUtils
-from Service.generalUtils import time_str_to_ms, ms_to_time_str
+from Service.generalUtils import time_str_to_ms, ms_to_time_str, mixed_sort_key, is_valid_cps
 from Service.videoUtils import _probe_video_duration_ms
 from ThreadWorker.AnnotationAudioFeatureWorker import BatchAnnotationWorker_with_AudioFeature
+from ThreadWorker.BatchDubbingWorker import BatchDubbingWorker
 from UI.Ui_annotation import Ui_Annotation
 # from Service.dubbingMain.llmAPI import LLMAPI
 from Service.subtitleUtils import parse_subtitle, parse_subtitle_uncertain
@@ -122,6 +123,7 @@ class DubbingInterface(Ui_Dubbing, QFrame):
         self.voice_selector_widgets = []
         self.activate_sender = None
         self.voice_selector_window = None
+        self.all_roles = []
 
         voiceDict1 = datasetUtils.getInstance().query_voice_id(1)
         voiceDict2 = {}
@@ -135,26 +137,27 @@ class DubbingInterface(Ui_Dubbing, QFrame):
 
     def _setup_unfinished_ui(self):
 
-        self.annotation_options_radio_widget = QWidget()
-        # self.annotation_options_radio_widget.setLayout(QVBoxLayout)
-        layout = QHBoxLayout(self.annotation_options_radio_widget)
+        self.cps_widget = QWidget()
+        layout = QHBoxLayout(self.cps_widget)
         layout.setContentsMargins(0,0,0,0)
-        self.operate_container.layout().insertWidget(0, self.annotation_options_radio_widget)
+        # self.operate_container.setMinimumHeight(400)
+        self.operate_container.layout().insertWidget(0, self.cps_widget)
 
-        self.options = ["旧版标注（较快）", "新版标注（较慢）"]
-        self.button1 = RadioButton(self.options[0])
-        self.button2 = RadioButton(self.options[1])
-        # self.button3 = RadioButton(self.options[2])
-        layout.addWidget(self.button1)
-        layout.addWidget(self.button2)
-        # layout.addWidget(self.button3)
+        # self.options = ["旧版标注（较快）", "新版标注（较慢）"]
+        # self.button1 = RadioButton(self.options[0])
+        # self.button2 = RadioButton(self.options[1])
+        # # self.button3 = RadioButton(self.options[2])
+        layout.addWidget(BodyLabel("cps阈值"))
+        self.cps_input = LineEdit()
+        self.cps_input.setText("23")
+        layout.addWidget(self.cps_input)
 
-        # 将单选按钮添加到互斥的按钮组
-        self.buttonGroup = QButtonGroup(self.annotation_options_radio_widget)
-        self.buttonGroup.addButton(self.button1)
-        self.buttonGroup.addButton(self.button2)
-        # self.buttonGroup.addButton(self.button3)
-        self.button2.setChecked(True)
+        # # 将单选按钮添加到互斥的按钮组
+        # self.buttonGroup = QButtonGroup(self.annotation_options_radio_widget)
+        # self.buttonGroup.addButton(self.button1)
+        # self.buttonGroup.addButton(self.button2)
+        # # self.buttonGroup.addButton(self.button3)
+        # self.button2.setChecked(True)
 
         self.annotation_language_widget = QWidget()
         layout1 = QHBoxLayout(self.annotation_language_widget)
@@ -184,7 +187,9 @@ class DubbingInterface(Ui_Dubbing, QFrame):
             """ #scrollArea{ border: None; background: transparent; } #scrollAreaWidgetContents_2{ background: transparent; } """)
         self.roleScrollArea.setObjectName("roleScrollArea")
         self.scrollArea_2.setStyleSheet(
-            """ #scrollArea_2{ border: 1; background: transparent; } #roleScrollArea{ background: transparent; } """)
+            """ #scrollArea_2{ border: None; background: transparent; } #roleScrollArea{ background: transparent; } """)
+
+        self.roleFrame.setStyleSheet("""#roleFrame{ background: #FFFFFF; } """)
         self.VoiceSelectorLayout = QVBoxLayout()
         self.VoiceSelectorLayout.setAlignment(Qt.AlignTop)  # 内容顶部对齐
         self.VoiceSelectorLayout.setSpacing(12)
@@ -225,7 +230,7 @@ class DubbingInterface(Ui_Dubbing, QFrame):
         self.info_container.setMinimumHeight(180)
         # wire button
         self.dubbingBtn.clicked.connect(self._on_dubbing_clicked)
-        self.operate_container.setMinimumHeight(100)
+        self.operate_container.setMinimumHeight(220)
 
         # self._add_role_selector("主角")
         # self._add_role_selector("配角")
@@ -269,14 +274,15 @@ class DubbingInterface(Ui_Dubbing, QFrame):
     def set_combobox_text(self, voice_name):
         self.activate_sender.combo_box.setText(voice_name)
 
-    def _on_general_finished(self, result: dict):
+    def _on_general_finished(self, result: dict=None):
         if isinstance(self.loading_msg, QMessageBox):
             self.loading_msg.hide()
         if self.worker:
             self.worker.deleteLater()
             self.worker = None
-        dlg = PrettyPathDialog("任务完成!", result["msg"], result["result_path"], parent=self)
-        dlg.exec_()
+        if result:
+            dlg = PrettyPathDialog("任务完成!", result["msg"], result["result_path"], parent=self)
+            dlg.exec_()
 
     def _on_extract_roles(self, file_paths: list):
         """提取字幕中的角色"""
@@ -296,15 +302,26 @@ class DubbingInterface(Ui_Dubbing, QFrame):
             if roles:
                 all_roles.extend(roles)
         print(all_roles)
-        all_roles = list(set(all_roles))
 
+        if all_roles:
+            self.all_roles = sorted(list(set(all_roles)), key=lambda x: mixed_sort_key(x))
+            self._update_role_selector()
+
+        self._on_general_finished()
+
+    def _update_role_selector(self):
+        """更新角色选择器"""
+        for i in range(self.VoiceSelectorLayout.count()):
+            self.VoiceSelectorLayout.itemAt(i).widget().deleteLater()
+        self.voice_selector_widgets = []
+        for role_name in self.all_roles:
+            self._add_role_selector(role_name)
 
 
     def _on_dubbing_clicked(self):
 
-        print(self.buttonGroup.checkedButton().text())
-        self.annotation_option = self.options.index(self.buttonGroup.checkedButton().text())
-        print(self.annotation_option)
+        cps = self.cps_input.text()
+        print(cps)
         """Validate inputs and start batch role annotation worker."""
         video_paths = self.compress_video_upload_area.file_paths if hasattr(self, 'compress_video_upload_area') else []
         subtitle_paths = self.merge_subtitle_upload_area.file_paths if hasattr(self, 'merge_subtitle_upload_area') else []
@@ -318,8 +335,8 @@ class DubbingInterface(Ui_Dubbing, QFrame):
             QMessageBox.warning(self, "警告", "视频与字幕数量不一致，请检查后重试")
             return
 
-        if not role_info:
-            QMessageBox.warning(self, "警告", "请填写角色信息后再开始")
+        if cps and not is_valid_cps(cps):
+            QMessageBox.warning(self, "警告", "请输入3到40之间的整数, 或者不填写")
             return
 
         pairs = list(zip(video_paths, subtitle_paths))
@@ -329,7 +346,7 @@ class DubbingInterface(Ui_Dubbing, QFrame):
         # loading dialog
         self.loading_msg = QMessageBox(self)
         self.loading_msg.setWindowTitle("请稍候")
-        self.loading_msg.setText("正在进行批量角色标注，请稍候...")
+        self.loading_msg.setText("正在进行批量视频配音，请稍候...")
         self.loading_msg.setStandardButtons(QMessageBox.NoButton)
         self.loading_msg.setModal(True)
         self.loading_msg.show()
@@ -337,13 +354,27 @@ class DubbingInterface(Ui_Dubbing, QFrame):
 
         # start worker
         timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-        output_root = os.path.join(ROLE_ANNO_FOLDER, f"批量角色标注-{os.path.splitext(os.path.basename(video_paths[0]))[0]}{timestamp}")
+        output_root = os.path.join(RESULT_OUTPUT_FOLDER, f"批量视频配音-{os.path.splitext(os.path.basename(video_paths[0]))[0]}{timestamp}")
 
-        if self.annotation_option == 0:
-            self.worker = BatchAnnotationWorker(pairs, role_info, output_root, self.extraOutputBtn.isChecked())
-        else:
-            self.worker = BatchAnnotationWorker_with_AudioFeature(pairs, role_info, output_root, self.extraOutputBtn.isChecked(), if_translate=self.language_input.text() != self.sub_language_input.text(), language= self.language_input.text())
-        # self.worker = BatchAnnotationWorker_with_AudioFeature(pairs, role_info, output_root, self.extraOutputBtn.isChecked(), if_translate=self.annotation_option == 2)
+        # if self.annotation_option == 0:
+        #     self.worker = BatchAnnotationWorker(pairs, role_info, output_root, self.extraOutputBtn.isChecked())
+        # else:
+        #     self.worker = BatchAnnotationWorker_with_AudioFeature(pairs, role_info, output_root, self.extraOutputBtn.isChecked(), if_translate=self.language_input.text() != self.sub_language_input.text(), language= self.language_input.text())
+
+        voice_params = {}
+        for i in range(len(self.voice_selector_widgets)):
+            widget = self.voice_selector_widgets[i]
+            assert isinstance(widget, VoiceSelectorWidget)
+            if widget.line_edit.text():
+                voice_params[widget.role_name] = widget.line_edit.text()
+            elif widget.combo_box.text() == "不配音":
+                voice_params[widget.role_name] = "-1"
+            else:
+                voice_params[widget.role_name] = self.voiceDict[widget.combo_box.text()][0]
+
+        print(voice_params)
+
+        self.worker = BatchDubbingWorker(pairs, output_root, self.extraOutputBtn.isChecked(), cps=cps, voice_params = voice_params, language= self.language_input.text())
         self.worker.progress.connect(self._on_progress)
         self.worker.finished.connect(self._on_general_finished)
         self.worker.start()
@@ -351,7 +382,8 @@ class DubbingInterface(Ui_Dubbing, QFrame):
     def _on_progress(self, value: int, text: str):
         if isinstance(self.loading_msg, QMessageBox):
             if value >= 0:
-                self.loading_msg.setText(text)
+                if text:
+                    self.loading_msg.setText(text)
             QApplication.processEvents()
 
 class BatchAnnotationWorker(QThread):
@@ -549,13 +581,16 @@ class BatchAnnotationWorker(QThread):
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     window = DubbingInterface()
-    window.compress_video_upload_area.add_files([r"E:\offer\配音任务2\伤心者联盟\1_2.mp4"])
-    window.merge_subtitle_upload_area.add_files([r"E:\offer\配音任务2\伤心者联盟\1_2.srt"])
-    window.role_info_edit.setText("""苏清雪：路辰的妻子，与江浩辰互相出轨
-路辰：苏清雪的丈夫
-江浩辰：童颜的丈夫，与苏清雪在外低俗娱乐
-童颜：江浩辰妻子
-吴佳佳：苏清雪闺蜜，煽风点火，推动剧情发展""")
+    window.compress_video_upload_area.add_files([r"E:\offer\配音任务2\伤心者联盟\video\compress\compressed_伤心者同盟（英）-1.mp4", r"E:\offer\配音任务2\伤心者联盟\video\compress\compressed_伤心者同盟（英）-3.mp4"])
+    # window.merge_subtitle_upload_area.add_files([r"E:\offer\配音任务2\伤心者联盟\1_2.srt"])
+    window.merge_subtitle_upload_area.add_files([r"E:\offer\配音任务2\伤心者联盟\英语修改后的srt\1-cps-带角色.srt", r"E:\offer\配音任务2\伤心者联盟\英语修改后的srt\3.srt"])
+    window.role_info_edit.setText("")
     window.show()
     sys.exit(app.exec_())
+
+    #     window.role_info_edit.setText("""苏清雪：路辰的妻子，与江浩辰互相出轨
+    # 路辰：苏清雪的丈夫
+    # 江浩辰：童颜的丈夫，与苏清雪在外低俗娱乐
+    # 童颜：江浩辰妻子
+    # 吴佳佳：苏清雪闺蜜，煽风点火，推动剧情发展""")
 

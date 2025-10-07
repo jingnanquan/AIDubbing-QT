@@ -123,7 +123,7 @@ class AnnotationInterface(Ui_Annotation, QFrame):
 
         # wire button
         self.extractBtn.clicked.connect(self._on_extract_clicked)
-        self.operate_container.setMinimumHeight(100)
+        self.operate_container.setMinimumHeight(120)
 
 
     def _on_general_finished(self, result: dict):
@@ -192,7 +192,8 @@ class AnnotationInterface(Ui_Annotation, QFrame):
     def _on_progress(self, value: int, text: str):
         if isinstance(self.loading_msg, QMessageBox):
             if value >= 0:
-                self.loading_msg.setText(text)
+                if text:
+                    self.loading_msg.setText(text)
             QApplication.processEvents()
 
 class BatchAnnotationWorker(QThread):

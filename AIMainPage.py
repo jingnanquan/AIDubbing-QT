@@ -208,7 +208,7 @@ class Window(SplitFluentWindow):
     def show(self):
         # 创建淡入动画
         width = 1400
-        height = 820
+        height = 920
         screen = QDesktopWidget().screenGeometry()
         x = (screen.width() - width) // 2
         y = (screen.height() - height) // 2

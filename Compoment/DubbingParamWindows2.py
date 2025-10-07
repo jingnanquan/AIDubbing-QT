@@ -158,7 +158,7 @@ class VoiceSelectorWindow(QMainWindow):
         self.VoiceLayout = QGridLayout()
         self.VoiceLayout.setAlignment(Qt.AlignTop)  # 内容顶部对齐
         self.VoiceLayout.setSpacing(10)
-        self.VoiceLayout.setContentsMargins(0,0,0,0)
+        self.VoiceLayout.setContentsMargins(5,5,9,5)
 
         self.audio_bar = SimpleMediaPlayBar()
         self.HistoryCardContainer.setLayout(self.VoiceLayout)
@@ -213,7 +213,7 @@ class VoiceSelectorWindow(QMainWindow):
         self.audio_bar.play()
 
     def adjust_width(self):
-        self.setMinimumWidth(self.HistoryCardContainer.sizeHint().width()+20)
+        self.setMinimumWidth(self.HistoryCardContainer.sizeHint().width()+80)
 
 
 """

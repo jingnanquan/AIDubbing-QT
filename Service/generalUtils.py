@@ -98,5 +98,12 @@ def mixed_sort_key(s):
     # 对每个部分进行适当转换
     return [convert_part(part) for part in parts]
 
+def is_valid_cps(s):
+    try:
+        num = int(s)
+        return 3 <= num <= 40
+    except ValueError:
+        return False
+
 
 

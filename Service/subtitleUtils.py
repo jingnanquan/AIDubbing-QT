@@ -150,9 +150,7 @@ def adjust_subtitles_cps(target_subs, cps: int, tolerate_factor: list):
             adjust_indices.append(i)
             max_char_lens.append(adjust)
 
-    print(adjust_list)
-    print(max_char_lens)
-    print(adjust_indices)
+    print("cps校验：", adjust_list, max_char_lens, adjust_indices)
     # 调用 LLM API 进行字幕压缩
 
     if adjust_list:

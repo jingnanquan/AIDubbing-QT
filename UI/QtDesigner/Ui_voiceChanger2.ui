@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>1300</width>
-    <height>879</height>
+    <height>925</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -886,8 +886,8 @@ QFrame#separatorLine {
                 <rect>
                  <x>0</x>
                  <y>0</y>
-                 <width>98</width>
-                 <height>28</height>
+                 <width>499</width>
+                 <height>611</height>
                 </rect>
                </property>
               </widget>

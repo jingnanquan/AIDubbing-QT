@@ -13,7 +13,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 class Ui_VoiceChanger(object):
     def setupUi(self, VoiceChanger):
         VoiceChanger.setObjectName("VoiceChanger")
-        VoiceChanger.resize(1300, 879)
+        VoiceChanger.resize(1300, 910)
         VoiceChanger.setStyleSheet("/*\n"
 "Overall Style\n"
 "*/\n"
