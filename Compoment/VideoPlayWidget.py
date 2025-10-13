@@ -172,7 +172,6 @@ class VideoPlayerWidget(QFrame):
             self.playButton.setIcon(self.style().standardIcon(QStyle.SP_MediaPlay))
 
     def play(self):
-        print("调用了我：", self.mediaPlayer.state())
         """Toggle play/pause"""
         if self.mediaPlayer.state() == QMediaPlayer.PlayingState:
             self.mediaPlayer.pause()

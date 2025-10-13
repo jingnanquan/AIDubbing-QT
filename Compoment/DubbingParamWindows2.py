@@ -21,7 +21,6 @@ from Service.datasetUtils import datasetUtils
 from Service.dubbingMain.dubbingElevenLabs import dubbingElevenLabs
 from Service.dubbingMain.dubbingElevenlabs2 import dubbingElevenLabs2
 from Service.dubbingMain.dubbingElevenlabs3 import dubbingElevenLabs3
-from Service.dubbingMain.llmAPI import LLMAPI
 from Service.generalUtils import check_close_permission, time_str_to_ms, mixed_sort_key
 from Service.subtitleUtils import parse_subtitle, adjust_subtitles_cps, parse_subtitle_uncertain
 import threading

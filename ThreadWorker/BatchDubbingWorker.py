@@ -14,9 +14,7 @@ from PyQt5.QtCore import QThread, pyqtSignal
 # from Service.ERes2NetV2.audiosimilarity import SpeakerEmbeddingCluster
 # from Service.ERes2NetV2.launch_visualization import launch_visualization_safely
 # from Service.dubbingMain.llmAPI import LLMAPI
-from Service.generalUtils import time_str_to_ms, ms_to_time_str
 from Service.subtitleUtils import parse_subtitle_uncertain
-from Service.videoUtils import get_audio_np_from_video, _probe_video_duration_ms
 
 
 class BatchDubbingWorker(QThread):

@@ -112,7 +112,7 @@ class AnnotationInterface(Ui_Annotation, QFrame):
                     }
                 """)
         layout = QVBoxLayout()
-        layout.setContentsMargins(9,0,9,0)
+        layout.setContentsMargins(2,0,9,0)
         label = QLabel("主角信息")
         label.setFont(self.font)
         layout.addWidget(label)
