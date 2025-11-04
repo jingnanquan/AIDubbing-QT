@@ -155,7 +155,7 @@ class DubbingInterface(Ui_Dubbing, QFrame):
         self.language_input = LineEdit()
         self.language_input.setText("中文")
         self.sub_language_input = LineEdit()
-        self.sub_language_input.setText("中文")
+        self.sub_language_input.setText("英语")
         layout1.addWidget(BodyLabel("视频语言:"))
         layout1.addWidget(self.language_input)
         layout1.addWidget(BodyLabel("字幕语言:"))
@@ -178,7 +178,7 @@ class DubbingInterface(Ui_Dubbing, QFrame):
         self.scrollArea_2.setStyleSheet(
             """ #scrollArea_2{ border: None; background: transparent; } #roleScrollArea{ background: transparent; } """)
 
-        self.roleFrame.setStyleSheet("""#roleFrame{ background: #FFFFFF; } """)
+        # self.roleFrame.setStyleSheet("""#roleFrame{ background: #FFFFFF; } """)
         self.VoiceSelectorLayout = QVBoxLayout()
         self.VoiceSelectorLayout.setAlignment(Qt.AlignTop)  # 内容顶部对齐
         self.VoiceSelectorLayout.setSpacing(12)
@@ -228,6 +228,24 @@ class DubbingInterface(Ui_Dubbing, QFrame):
         voice_selector_widget.select_voice_signal.connect(self.select_voice)
         self.VoiceSelectorLayout.addWidget(voice_selector_widget)
         self.voice_selector_widgets.append(voice_selector_widget)
+
+
+    def update_voice_dict(self):
+        voiceDict1 = datasetUtils.getInstance().query_voice_id(1)
+        voiceDict2 = {}
+        for key, value in voiceDict1.items():
+            voiceDict2[key] = [value, ""]  # 这里置为空
+        self.voiceDict = spare_voices | voiceDict2 | prepared_voices
+        self.voiceNameList = list(self.voiceDict.keys())
+
+        if self.voice_selector_window is not None and isinstance(self.voice_selector_window, VoiceSelectorWindow):
+            window_pointer = self.voice_selector_window
+            self.voice_selector_window = None
+            try:
+                window_pointer.destroyed.disconnect()
+            except:
+                pass
+            window_pointer.deleteLater()
 
     def select_voice(self, flag:bool=True):
         self.activate_sender = self.sender()
@@ -309,10 +327,13 @@ class DubbingInterface(Ui_Dubbing, QFrame):
             QMessageBox.warning(self, "警告", "请输入3到40之间的整数, 或者不填写")
             return
 
-        voice_count  = self.get_voices_count()
-        if voice_count + len(self.voice_selector_widgets) > 160:
-            QMessageBox.warning(self, "警告", f"请删除克隆的声音，使其小于{160-voice_count}个")
-            return
+
+        # voice_count  = self.get_voices_count()
+        # # print(voice_count)
+        # # print(len(self.voice_selector_widgets))
+        # if voice_count + len(self.voice_selector_widgets) > 160:
+        #     QMessageBox.warning(self, "警告", f"请删除克隆的声音，使其小于{160-len(self.voice_selector_widgets)}个")
+        #     return
 
         pairs = list(zip(video_paths, subtitle_paths))
 
@@ -364,8 +385,7 @@ class DubbingInterface(Ui_Dubbing, QFrame):
     def get_voices_count(self):
         try:
             elevenlabs = dubbingElevenLabs.getInstance().elevenlabs
-            response = elevenlabs.voices.search(page_size=100, sort="created_at_unix", sort_direction="asc",
-                                                category="cloned")
+            response = elevenlabs.voices.search(page_size=100, sort="created_at_unix", sort_direction="asc",voice_type="non-default")
             print(f"已获取{len(response.voices)}个声源")
             return response.total_count
         except Exception as e:
@@ -376,14 +396,16 @@ class DubbingInterface(Ui_Dubbing, QFrame):
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     window = DubbingInterface()
-    window.compress_video_upload_area.add_files([r"E:\offer\配音任务2\伤心者联盟\video\compress\compressed_伤心者同盟（英）-1.mp4", r"E:\offer\配音任务2\伤心者联盟\video\compress\compressed_伤心者同盟（英）-3.mp4"])
-    # window.merge_subtitle_upload_area.add_files([r"E:\offer\配音任务2\伤心者联盟\1_2.srt"])
-    window.merge_subtitle_upload_area.add_files([r"E:\offer\配音任务2\伤心者联盟\英语修改后的srt\1-cps-带角色.srt", r"E:\offer\配音任务2\伤心者联盟\英语修改后的srt\3.srt"])
+    # window.compress_video_upload_area.add_files([r"E:\offer\配音任务2\伤心者联盟\video\compress\compressed_伤心者同盟（英）-1.mp4", r"E:\offer\配音任务2\伤心者联盟\video\compress\compressed_伤心者同盟（英）-3.mp4"])
+    # window.merge_subtitle_upload_area.add_files([r"E:\offer\配音任务2\伤心者联盟\英语修改后的srt\1-cps-带角色.srt", r"E:\offer\配音任务2\伤心者联盟\英语修改后的srt\3.srt"])
+
+    window.compress_video_upload_area.add_files([r"E:\offer\配音任务2\伤心者联盟\video\compress\compressed_伤心者同盟（英）-4.mp4", r"E:\offer\配音任务2\伤心者联盟\video\compress\compressed_伤心者同盟（英）-5.mp4"])
+    window.merge_subtitle_upload_area.add_files([r"E:\offer\配音任务2\伤心者联盟\__已标记校验的字幕\英\伤心者同盟（英）-4.srt", r"E:\offer\配音任务2\伤心者联盟\__已标记校验的字幕\英\伤心者同盟（英）-5.srt"])
     window.role_info_edit.setText("")
     window.show()
     sys.exit(app.exec_())
 
-    #     window.role_info_edit.setText("""苏清雪：路辰的妻子，与江浩辰互相出轨
+    # window.role_info_edit.setText("""苏清雪：路辰的妻子，与江浩辰互相出轨
     # 路辰：苏清雪的丈夫
     # 江浩辰：童颜的丈夫，与苏清雪在外低俗娱乐
     # 童颜：江浩辰妻子

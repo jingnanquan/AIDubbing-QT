@@ -6,11 +6,11 @@ a = Analysis(
     pathex=[],
     binaries=[],
     datas=[],
-    hiddenimports=['tiktoken_ext.openai_public', 'tiktoken_ext', 'onnx.reference'],
+    hiddenimports=['tiktoken_ext.openai_public', 'tiktoken_ext'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=['onnx.reference'],
     noarchive=False,
     optimize=0,
 )

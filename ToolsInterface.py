@@ -14,7 +14,7 @@ from Compoment.FileUploadArea import FileUploadArea
 from Compoment.PathDialog import PrettyPathDialog
 from Service.videoUtils import _probe_video_duration_ms
 from ThreadWorker.ToolsWorker import CompressVideoWorker, MergeVideoWorker, MergeSubtitleWorker, CloneVoiceWorker, \
-    SplitSubtitleWorker, SyncSubtitleWorker, ClearBGMWorker
+    SplitSubtitleWorker, SyncSubtitleWorker, ClearBGMWorker, SplitVideoWorker
 from UI.Ui_tools import Ui_Tools
 
 
@@ -82,6 +82,27 @@ class ToolsInterface(Ui_Tools, QFrame):
         self.clear_bgm_upload_area = FileUploadArea(label_text="视频文件", file_types=["*.mp4", "*.avi"])
         self.clearbgmBox.layout().addWidget(self.clear_bgm_upload_area)
         self.clearbgmBtn.clicked.connect(self._clear_bgm)
+
+        self.srcVideoBox.setLayout(QVBoxLayout())
+        self.srcVideoBox.layout().setContentsMargins(0,0,0,0)
+        self.dstVideoBox.setLayout(QVBoxLayout())
+        self.dstVideoBox.layout().setContentsMargins(0,0,0,0)
+        self.split_src_video_upload_area = FileUploadArea(label_text="待分割的长视频文件(1个)", file_types=["*.mp4", "*.avi"])
+        self.split_dst_video_upload_area = FileUploadArea(label_text="原视频文件列表", file_types=["*.mp4", "*.avi"])
+        self.srcVideoBox.layout().addWidget(self.split_src_video_upload_area)
+        self.dstVideoBox.layout().addWidget(self.split_dst_video_upload_area)
+        self.splitVideoBtn.clicked.connect(self._split_video)
+
+
+
+        # self.frame_1.setMinimumHeight(self.frame_1.sizeHint().height())
+        # self.frame_2.setMinimumHeight(self.frame_2.sizeHint().height())
+        # self.frame_3.setMinimumHeight(self.frame_3.sizeHint().height())
+        # self.frame_4.setMinimumHeight(self.frame_4.sizeHint().height())
+        # self.frame_5.setMinimumHeight(self.frame_5.sizeHint().height())
+        # self.frame_6.setMinimumHeight(self.frame_6.sizeHint().height())
+        # self.frame_7.setMinimumHeight(self.frame_7.sizeHint().height())
+        # self.frame_8.setMinimumHeight(self.frame_8.sizeHint().height())
 
         # self.frame_4.setLayout(QVBoxLayout())
         # self.testarea1 = FileUploadArea(label_text="视频文件", file_types=["*.mp4", "*.avi"])
@@ -195,6 +216,31 @@ class ToolsInterface(Ui_Tools, QFrame):
         self.worker = SyncSubtitleWorker(src_subtitle_paths, dst_subtitle_paths)
         self.worker.finished.connect(self._on_general_finished)
         self.worker.start()
+
+    def _split_video(self):
+        print("分割视频")
+        src_video_path = self.split_src_video_upload_area.file_paths
+        dst_video_paths = self.split_dst_video_upload_area.file_paths
+        if not src_video_path or not dst_video_paths:
+            QMessageBox.warning(self, "警告", "请上传待分割的长视频文件和原视频文件列表")
+            return
+        if len(src_video_path) >1:
+            QMessageBox.warning(self, "警告", "待分割的长视频文件只能有一个")
+            return
+
+        print(src_video_path[0], dst_video_paths)
+        self.loading_msg = QMessageBox(self)
+        self.loading_msg.setWindowTitle("请稍候")
+        self.loading_msg.setText("正在分割中，请稍候...")
+        self.loading_msg.setStandardButtons(QMessageBox.NoButton)
+        self.loading_msg.setModal(True)
+        self.loading_msg.show()
+        QApplication.processEvents()
+
+        self.worker = SplitVideoWorker(src_video_path[0], dst_video_paths)
+        self.worker.finished.connect(self._on_general_finished)
+        self.worker.start()
+
 
     def _merge_subtitle(self):
         print("合并字幕")

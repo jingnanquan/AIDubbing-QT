@@ -134,7 +134,7 @@ class dubbingElevenLabs3(dubbingInterface):
                         text = text,
                         voice_id=voice_id,
                         model_id="eleven_multilingual_v2",
-                        output_format="mp3_44100_128",
+                        output_format="mp3_44100_192",
                         voice_settings=voice_setting,
                         previous_request_ids = previous_dict[role][-3:])
                     request_id = audio._response.headers.get("request-id")
@@ -306,7 +306,56 @@ class dubbingElevenLabs3(dubbingInterface):
                 db_connect.save_voice_id(api_id=1, voice_name="{}-{}".format(key, timestamp), voice_id=voice_id)
         return voice_ids
 
+    def get_audio_duration_for_target_size(self, audio_path: str, target_size_bytes: int) -> float:
+        """
+        通过二分查找，计算出能使WAV文件大小最接近但不超过 target_size_bytes 的最大时长（秒）。
+        """
+        audio = AudioSegment.from_wav(audio_path)
+        original_duration_ms = len(audio)
+        original_file_size = os.path.getsize(audio_path)
+
+        if original_file_size <= target_size_bytes:
+            return original_duration_ms / 1000.0  # 返回原始时长（秒）
+
+        # WAV是无损格式，文件大小与时长基本成线性关系
+        # 估算一个初始的裁剪时长
+        estimated_duration_ms = int((target_size_bytes / original_file_size) * original_duration_ms)
+
+        # 确保不会超过原始长度
+        estimated_duration_ms = min(estimated_duration_ms, original_duration_ms)
+
+        # 为了更精确，可以简单地按比例裁剪
+        # 对于大多数情况，这已经足够精确
+        return estimated_duration_ms / 1000.0
+
     def clone_text(self, key: str, audio_path: str, timestamp: str):
+        MAX_FILE_SIZE_BYTES = 8 * 1024 * 1024  # 8 MB
+        # --- 新增：检查并裁剪文件 ---
+        file_size = os.path.getsize(audio_path)
+        if file_size > MAX_FILE_SIZE_BYTES:
+            print(f"Audio file is {file_size / (1024 * 1024):.2f} MB, larger than 8MB. Trimming...")
+            target_duration_sec = self.get_audio_duration_for_target_size(audio_path, MAX_FILE_SIZE_BYTES)
+            audio = AudioSegment.from_wav(audio_path)
+            trimmed_audio = audio[:int(target_duration_sec * 1000)]  # pydub 使用毫秒
+
+            # 将裁剪后的音频保存到内存中的字节流
+            audio_buffer = io.BytesIO()
+            trimmed_audio.export(audio_buffer, format="wav")
+            audio_buffer.seek(0)
+            audio_files = [audio_buffer]
+        else:
+            # 文件大小符合要求，直接读取
+            audio_files = [io.BytesIO(open(audio_path, "rb").read())]
+        # --- 裁剪逻辑结束 ---
+
+        voice = self.connect.elevenlabs.voices.ivc.create(
+            name="{}-{}".format(key, timestamp),
+            files=audio_files
+        )
+        print(voice)
+        return voice.voice_id
+
+    def clone_text_cast(self, key: str, audio_path: str, timestamp: str):
         voice = self.connect.elevenlabs.voices.ivc.create(
             name="{}-{}".format(key, timestamp),
             # Replace with the paths to your audio files.

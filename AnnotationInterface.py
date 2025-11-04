@@ -158,9 +158,10 @@ class AnnotationInterface(Ui_Annotation, QFrame):
             QMessageBox.warning(self, "警告", "视频与字幕数量不一致，请检查后重试")
             return
 
-        if not role_info:
-            QMessageBox.warning(self, "警告", "请填写角色信息后再开始")
-            return
+        # 可以不填写
+        # if not role_info:
+        #     QMessageBox.warning(self, "警告", "请填写角色信息后再开始")
+        #     return
 
         pairs = list(zip(video_paths, subtitle_paths))
 
@@ -391,15 +392,24 @@ class BatchAnnotationWorker(QThread):
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     window = AnnotationInterface()
+    # 测试视频
     # window.compress_video_upload_area.add_files([r"E:\offer\配音任务2\伤心者联盟\merged_video_20250915150343.mp4"])
     # window.merge_subtitle_upload_area.add_files([r"E:\offer\配音任务2\伤心者联盟\merged_subtitle_20250915150314.srt"])
-    window.compress_video_upload_area.add_files([r"E:\offer\配音任务2\伤心者联盟\1_2.mp4"])
-    window.merge_subtitle_upload_area.add_files([r"E:\offer\配音任务2\伤心者联盟\1_2.srt"])
-    window.role_info_edit.setText("""苏清雪：路辰的妻子，与江浩辰互相出轨
-路辰：苏清雪的丈夫
-江浩辰：童颜的丈夫，与苏清雪在外低俗娱乐
-童颜：江浩辰妻子
-吴佳佳：苏清雪闺蜜，煽风点火，推动剧情发展""")
+
+    # 第一集视频
+    # window.compress_video_upload_area.add_files([r"E:\offer\配音任务2\伤心者联盟\1_2.mp4"])
+    # window.merge_subtitle_upload_area.add_files([r"E:\offer\配音任务2\伤心者联盟\1_2.srt"])
+
+    # 第1~8集视频，20分钟，477条字幕
+    window.compress_video_upload_area.add_files([r"E:\offer\配音任务2\伤心者联盟\测试长视频1_8\1_8.mp4"])
+    window.merge_subtitle_upload_area.add_files([r"E:\offer\配音任务2\伤心者联盟\测试长视频1_8\中文.srt"])
+
+
+#     window.role_info_edit.setText("""苏清雪：路辰的妻子，与江浩辰互相出轨
+# 路辰：苏清雪的丈夫
+# 江浩辰：童颜的丈夫，与苏清雪在外低俗娱乐
+# 童颜：江浩辰妻子
+# 吴佳佳：苏清雪闺蜜，煽风点火，推动剧情发展""")
     window.show()
     sys.exit(app.exec_())
 

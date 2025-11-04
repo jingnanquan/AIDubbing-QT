@@ -108,7 +108,7 @@ class CompressVideoWorker(QThread):
             self.finished.emit({"msg": "视频压缩完成! 保存路径如下：",  "result_path": result_dir})
 
 
-class MergeVideoWorker(QThread):
+class MergeVideoWorker_origin1(QThread):
     # 定义一个信号，用于在任务完成后更新 GUI
     finished = pyqtSignal(dict)
     item_finished = pyqtSignal(int)
@@ -158,6 +158,144 @@ class MergeVideoWorker(QThread):
         except Exception as e:
             print(f"❌ 视频合并出错: {e}")
             self.finished.emit({"msg": f"视频合并失败: {str(e)}", "result_path": ""})
+
+class MergeVideoWorker(QThread):
+    finished = pyqtSignal(dict)
+    item_finished = pyqtSignal(int)
+
+    def __init__(self, video_files: list):
+        super().__init__()
+        self.video_files = video_files
+        self.crf = 28
+        self.preset = "fast"
+
+    def _probe_video(self, path):
+        """获取视频的元信息"""
+        try:
+            info = ffmpeg.probe(path)
+            video_stream = next((s for s in info['streams'] if s['codec_type'] == 'video'), None)
+            audio_stream = next((s for s in info['streams'] if s['codec_type'] == 'audio'), None)
+            if not video_stream:
+                raise ValueError("No video stream found")
+            return {
+                'width': int(video_stream.get('width', 0)),
+                'height': int(video_stream.get('height', 0)),
+                'fps': eval(video_stream.get('r_frame_rate', '0/1')),
+                'v_codec': video_stream.get('codec_name', ''),
+                'a_codec': audio_stream.get('codec_name', '') if audio_stream else '',
+                'sample_rate': int(audio_stream.get('sample_rate', 0)) if audio_stream else 0,
+            }
+        except Exception as e:
+            raise ValueError(f"Failed to probe {path}: {e}")
+
+    def _can_copy_merge(self, base_info, other_info):
+        """判断是否可以无损合并（所有视频格式一致）"""
+        return (
+            base_info['v_codec'] == other_info['v_codec'] and
+            base_info['a_codec'] == other_info['a_codec'] and
+            base_info['width'] == other_info['width'] and
+            base_info['height'] == other_info['height'] and
+            abs(base_info['fps'] - other_info['fps']) < 0.01 and
+            base_info['sample_rate'] == other_info['sample_rate']
+        )
+
+    def run(self):
+        print("enter: 视频合并")
+        if not self.video_files:
+            self.finished.emit({"msg": "视频文件列表为空", "result_path": ""})
+            return
+
+        dir = os.path.dirname(self.video_files[0])
+        result_dir = os.path.join(dir, "merged")
+        os.makedirs(result_dir, exist_ok=True)
+        output_filename = f"merged_video_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}.mp4"
+        output_path = os.path.join(result_dir, output_filename)
+
+        try:
+            # 1. 探测第一个视频作为基准
+            base_info = self._probe_video(self.video_files[0])
+            print(f"基准视频格式: {base_info}")
+
+            # 2. 检查是否所有视频都兼容 copy 合并
+            use_copy = True
+            for f in self.video_files[1:]:
+                info = self._probe_video(f)
+                if not self._can_copy_merge(base_info, info):
+                    use_copy = False
+                    break
+
+            if use_copy:
+                print("✅ 所有视频格式一致，使用无损快速合并（-c copy）")
+                # 构建 concat 输入列表文件（避免命令行过长）
+                list_file = os.path.join(result_dir, "input_files.txt")
+                with open(list_file, 'w', encoding='utf-8') as f:
+                    for vf in self.video_files:
+                        f.write(f"file '{vf}'\n")
+
+                (
+                    ffmpeg
+                    .input(list_file, format='concat', safe=0)
+                    .output(output_path, c='copy')
+                    .overwrite_output()
+                    .run()
+                )
+                os.remove(list_file)  # 清理临时文件
+            else:
+                print("⚠️ 视频格式不一致，启用重编码合并（统一到基准格式）")
+                streams = []
+                has_audio = False
+
+                for idx, f in enumerate(self.video_files):
+                    inp = ffmpeg.input(f)
+                    v = inp.video
+                    a = inp.audio if any(s['codec_type'] == 'audio' for s in ffmpeg.probe(f)['streams']) else None
+
+                    # 统一视频：缩放+帧率对齐（以第一个视频为准）
+                    if idx > 0:
+                        v = v.filter('scale', base_info['width'], base_info['height'])
+                        # 可选：强制帧率（如果差异大）
+                        # v = v.filter('fps', base_info['fps'])
+
+                    # 统一音频：重采样 + aresample 对齐
+                    if a is not None:
+                        a = a.filter('aresample', **{
+                            'async': 1,
+                            'first_pts': 0,
+                            'sample_rate': base_info['sample_rate'] or 44100
+                        })
+                    else:
+                        a = ffmpeg.input('anullsrc', sample_rate=base_info['sample_rate'] or 44100,
+                                         duration=ffmpeg.probe(f)['format']['duration']).audio
+
+                    streams += [v, a]
+
+                concat = ffmpeg.concat(*streams, v=1, a=1, n=len(self.video_files)).node
+                vcat = concat[0]
+                acat = concat[1]
+
+
+                out = ffmpeg.output(
+                    vcat, acat, output_path,
+                    vcodec='libx264',
+                    acodec='aac',
+                    preset=self.preset,
+                    crf=self.crf
+                ).global_args('-fflags', '+genpts').overwrite_output()
+
+                out.run()
+
+            print(f"✅ 视频合并完成: {output_path}")
+            self.finished.emit({
+                "msg": f"视频合并完成！保存路径如下：",
+                "result_path": result_dir
+            })
+
+        except Exception as e:
+            print(f"❌ 视频合并出错: {e}")
+            self.finished.emit({
+                "msg": f"视频合并失败: {str(e)}",
+                "result_path": ""
+            })
 
 
 class MergeSubtitleWorker(QThread):
@@ -525,3 +663,82 @@ class SyncSubtitleWorker(QThread):
             "error_files": error_files  # 建议也返回错误文件列表
         })
 
+class SplitVideoWorker(QThread):
+    finished = pyqtSignal(dict)
+
+    def __init__(self, src_video_path: str, dst_video_paths: list, parent=None):
+        super().__init__(parent)
+        self.src_video_path = src_video_path
+        self.dst_video_paths = dst_video_paths
+
+    def run(self):
+        print("enter: 视频分割")
+
+        # 获取源视频所在目录作为输出目录
+        dir = os.path.dirname(self.src_video_path)
+        result_dir = os.path.join(dir, "split_videos")
+        os.makedirs(result_dir, exist_ok=True)
+
+        try:
+            # 获取每个目标视频的时长
+            durations = []
+            for dst_path in self.dst_video_paths:
+                info = ffmpeg.probe(dst_path)
+                duration = float(info['format']['duration'])
+                durations.append(duration)
+
+            # 计算分割点（累积时长）
+            split_points = [0]  # 起始点
+            for duration in durations:
+                split_points.append(split_points[-1] + duration)
+
+            # 分割源视频
+            output_files = []
+            src_filename = os.path.splitext(os.path.basename(self.src_video_path))[0]
+
+            for i in range(len(durations)):
+                start_time = split_points[i]
+                end_time = split_points[i + 1]
+                duration = durations[i]
+
+                output_filename = f"{src_filename}_part_{i + 1:02d}.mp4"
+                output_path = os.path.join(result_dir, output_filename)
+
+                # 使用 ffmpeg 进行分割，不能使用copy啊，copy不会找到精确的start_time，前几秒会压缩卡顿
+                # (
+                #     ffmpeg
+                #     .input(self.src_video_path, ss=start_time, t=duration)
+                #     .output(output_path, c='copy')  # 使用 copy 以加快速度并保持质量
+                #     .overwrite_output()
+                #     .run()
+                # )
+                (
+                    ffmpeg
+                    .input(self.src_video_path, ss=start_time, t=duration)
+                    .output(
+                        output_path,
+                        vcodec='libx264',
+                        acodec='aac',
+                        preset='ultrafast',
+                        crf=28,
+                        pix_fmt='yuv420p'
+                    )
+                    .overwrite_output()
+                    .run()
+                )
+
+                output_files.append(output_path)
+                print(f"✅ 已保存分割视频: {output_path}")
+
+            self.finished.emit({
+                "msg": f"视频分割完成! 共生成 {len(output_files)} 个文件",
+                "result_path": result_dir,
+                "output_files": output_files
+            })
+
+        except Exception as e:
+            print(f"❌ 视频分割出错: {e}")
+            self.finished.emit({
+                "msg": f"视频分割失败: {str(e)}",
+                "result_path": ""
+            })

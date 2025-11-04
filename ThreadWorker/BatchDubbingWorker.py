@@ -43,8 +43,32 @@ class BatchDubbingWorker(QThread):
     def on_progress(self, value, msg):
         self.progress.emit(value, msg)
 
+    def get_voices_count(self):
+        try:
+            from Service.dubbingMain.dubbingElevenlabs3 import dubbingElevenLabs
+
+            elevenlabs = dubbingElevenLabs.getInstance().elevenlabs
+            response = elevenlabs.voices.search(page_size=100, sort="created_at_unix", sort_direction="asc",voice_type="non-default")
+            print(f"已获取{len(response.voices)}个声源")
+            return response.total_count
+        except Exception as e:
+            print(f"获取声源数量失败: {e}")
+            return 0
+
     def run(self):
         try:
+            voice_count = self.get_voices_count()
+            # print(voice_count)
+            print(self.voice_params)
+            param_cloned_voice_count = sum(1 for param in self.voice_params.values() if param=="")   # 自动克隆为空
+            # print(param_cloned_voice_count)
+            if voice_count + param_cloned_voice_count > 160:
+                self.finished.emit({
+                    "msg": f"警告，此次配音需要克隆{param_cloned_voice_count}个声源，请删除已经克隆的声音，使其小于{160-param_cloned_voice_count}个",
+                    "result_path": ""
+                })
+                return
+
             os.makedirs(self.output_root_dir, exist_ok=True)
             self.summary_dir = os.path.join(self.output_root_dir, "剧情简介")
             self.srt_dir = os.path.join(self.output_root_dir, "字幕")
@@ -57,6 +81,7 @@ class BatchDubbingWorker(QThread):
 
             from Service.dubbingMain.dubbingElevenlabs3 import dubbingElevenLabs3
             ElevenLabsAPI = dubbingElevenLabs3.getInstance()
+
             for idx, (video_path, subtitle_path) in enumerate(self.pairs):
                 try:
                     print(idx, video_path, subtitle_path)

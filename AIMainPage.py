@@ -179,12 +179,19 @@ class Window(SplitFluentWindow):
         self.stackedWidget.currentWidget().lazy_load()
         
         if self.SubtitleInterface.main_widget and hasattr(self.SubtitleInterface.main_widget, 'video_player'):
-            from Compoment.VideoPlayWidget import VideoPlayerWidget
-            if isinstance(self.SubtitleInterface.main_widget.video_player, VideoPlayerWidget):
+            if self.SubtitleInterface.main_widget.video_player is not None:
                 self.SubtitleInterface.main_widget.video_player.pause()
-                
+            # from Compoment.VideoPlayWidget import VideoPlayerWidget
+            # if isinstance(self.SubtitleInterface.main_widget.video_player, VideoPlayerWidget):
+            #     self.SubtitleInterface.main_widget.video_player.pause()
+
+        # 回到该界面时，进行一次刷新
         if self.ProjectInterface.main_widget and self.stackedWidget.currentWidget() == self.ProjectInterface:
             self.ProjectInterface.main_widget.async_refresh()
+
+        # 刷新voicedict
+        if self.DubbingInterface.main_widget and self.stackedWidget.currentWidget() == self.DubbingInterface:
+            self.DubbingInterface.main_widget.update_voice_dict()
 
     def initWindow(self):
         self.setWindowIcon(QIcon(':/qfluentwidgets/images/logo.png'))
