@@ -18,9 +18,9 @@ from Compoment.HistoryCard import VoiceCardItem
 from Compoment.PathDialog import PrettyPathDialog
 from Config import resource_path, RESULT_OUTPUT_FOLDER, tolerate_factor, AUDIO_SEPARATION_FOLDER
 from Service.datasetUtils import datasetUtils
-from Service.dubbingMain.dubbingElevenLabs import dubbingElevenLabs
-from Service.dubbingMain.dubbingElevenlabs2 import dubbingElevenLabs2
-from Service.dubbingMain.dubbingElevenlabs3 import dubbingElevenLabs3
+# from Service.dubbingMain.dubbingElevenLabs import dubbingElevenLabs
+# from Service.dubbingMain.dubbingElevenlabs2 import dubbingElevenLabs2
+# from Service.dubbingMain.dubbingElevenlabs3 import dubbingElevenLabs3
 from Service.generalUtils import check_close_permission, time_str_to_ms, mixed_sort_key
 from Service.subtitleUtils import parse_subtitle, adjust_subtitles_cps, parse_subtitle_uncertain
 import threading
@@ -194,6 +194,7 @@ class VoiceSelectorWindow(QMainWindow):
         self.return_signal.emit(voice_name)
 
     def set_voice_url(self, file_path, voice_id):
+        from Service.dubbingMain.dubbingElevenlabs2 import dubbingElevenLabs2
 
         print(voice_id, file_path)
         if not file_path and voice_id:
@@ -695,6 +696,7 @@ class ElevenDubbingWorker2(QThread):
 
     def run(self):
         from Service.dubbingMain.dubbingElevenLabs import dubbingElevenLabs
+        from Service.dubbingMain.dubbingElevenlabs3 import dubbingElevenLabs3
 
         try:
             params = self.params
@@ -819,7 +821,9 @@ def separate_audio(target_subs_: list, role_match_list: list, video_path: str, v
     print(target_subs)
 
     from Service.uvr5.audioseperate import AudioSeparator
-    from Service.uvrMain.separate import AudioPre
+    from Service.dubbingMain.dubbingElevenLabs import dubbingElevenLabs
+
+    # from Service.uvrMain.separate import AudioPre
     try:
         video_audio, samplerate = get_audio_np_from_video(video_path)
         assert isinstance(video_audio, np.ndarray)

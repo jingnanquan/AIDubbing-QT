@@ -2,6 +2,8 @@ import os
 import re
 import time
 
+import numpy as np
+import unicodedata
 from PyQt5.QtWidgets import QMessageBox
 from pypinyin import lazy_pinyin
 
@@ -104,6 +106,79 @@ def is_valid_cps(s):
         return 3 <= num <= 40
     except ValueError:
         return False
+
+
+def find_substring_position(text, pattern):
+    """
+    在text中查找pattern首次出现的位置
+
+    Args:
+        text: 主字符串
+        pattern: 要查找的子字符串
+
+    Returns:
+        tuple: (起始位置, 结束位置)，如果没找到返回(-1, -1)
+    """
+    start = text.find(pattern)
+    if start == -1:
+        return -1, -1
+    end = start + len(pattern) - 1
+    return start, end
+
+
+def ends_with_character_or_punctuation(text):
+    """
+    判断字符串是以字符（字）结尾还是以标点符号结尾
+
+    Args:
+        text: 输入字符串（支持多语言）
+
+    Returns:
+        str: 'character' - 以字符结尾
+             'punctuation' - 以标点符号结尾
+             'empty' - 空字符串
+    """
+    if not text or not text.strip():
+        return 'empty'
+
+    # 获取最后一个非空白字符
+    last_char = text.strip()[-1]
+
+    # 方法1：使用unicodedata判断字符类别
+    category = unicodedata.category(last_char)
+
+    # Unicode字符类别说明：
+    # P* 开头的都是标点符号（Pc, Pd, Pe, Pf, Pi, Po, Ps）
+    # L* 开头的是字母（Ll, Lm, Lo, Lt, Lu）
+    # N* 开头的是数字（Nd, Nl, No）
+    # 其他类别根据需求判断
+
+    if category.startswith('P'):  # 标点符号
+        return 'punctuation'
+    elif category.startswith('L') or category.startswith('N'):  # 字母或数字
+        return 'character'
+    else:
+        # 对于其他类别，可以进一步判断或默认作为字符处理
+        return 'character'
+
+if __name__ == '__main__':
+    zeros_audio = np.zeros((88200, 2))
+    print(zeros_audio)
+    print(zeros_audio.shape)
+
+    pp = np.array([[1, 2], [3, 4]])
+    print(pp)
+    zeros_audio[1:1+pp.shape[0]] += pp
+    print(zeros_audio)
+
+    # char_array = [' ', 'M', 's', '.', ' ', 'C', 'a', 'r', 't', 'e', 'r', ',', ' ', 'c', 'o', 'n', 'g', 'r', 'a', 't', 'u', 'l', 'a', 't', 'i', 'o', 'n', 's', ',', ' ', 'y', 'o', 'u', "'", 'r', 'e', ' ', 'p', 'r', 'e', 'g', 'n', 'a', 'n', 't', '.', ' ']
+    # result = ''.join(char_array)
+    # print(result)
+    # print(find_substring_position(result, "Ms. Carter,"))
+    # print(find_substring_position(result, "congratulations"))
+    # print(find_substring_position(result, "you're pregnant."))
+
+
 
 
 

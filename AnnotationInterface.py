@@ -20,7 +20,9 @@ from Compoment.FileUploadArea import FileUploadArea
 from Compoment.PathDialog import PrettyPathDialog
 from Service.generalUtils import time_str_to_ms, ms_to_time_str
 from Service.videoUtils import _probe_video_duration_ms
-from ThreadWorker.AnnotationAudioFeatureWorker import BatchAnnotationWorker_with_AudioFeature
+# from ThreadWorker.AnnotationAudioFeatureWorker import BatchAnnotationWorker_with_AudioFeature
+from ThreadWorker.AnnotationExperiment import BatchAnnotationWorker_with_AudioFeature, \
+    BatchAnnotationWorker_with_AudioFeature_no_split
 from UI.Ui_annotation import Ui_Annotation
 # from Service.dubbingMain.llmAPI import LLMAPI
 from Service.subtitleUtils import parse_subtitle
@@ -48,20 +50,22 @@ class AnnotationInterface(Ui_Annotation, QFrame):
         layout.setContentsMargins(0,0,0,0)
         self.operate_container.layout().insertWidget(0, self.annotation_options_radio_widget)
 
-        self.options = ["旧版标注（较快）", "新版标注（较慢）"]
+        self.options = ["旧版标注（较快）", "新版标注（较慢）", "新版标注（自动合并为长视频）"]
         self.button1 = RadioButton(self.options[0])
         self.button2 = RadioButton(self.options[1])
-        # self.button3 = RadioButton(self.options[2])
+        self.button3 = RadioButton(self.options[2])
         layout.addWidget(self.button1)
         layout.addWidget(self.button2)
+        layout.addWidget(self.button3)
         # layout.addWidget(self.button3)
 
         # 将单选按钮添加到互斥的按钮组
         self.buttonGroup = QButtonGroup(self.annotation_options_radio_widget)
         self.buttonGroup.addButton(self.button1)
         self.buttonGroup.addButton(self.button2)
-        # self.buttonGroup.addButton(self.button3)
-        self.button2.setChecked(True)
+        self.buttonGroup.addButton(self.button3)
+        self.button3.setChecked(True)
+        self.extraOutputBtn.hide()
 
         self.annotation_language_widget = QWidget()
         layout1 = QHBoxLayout(self.annotation_language_widget)
@@ -102,7 +106,7 @@ class AnnotationInterface(Ui_Annotation, QFrame):
         self.role_info_edit = DraggableTextEdit()
         self.role_info_edit.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.role_info_edit.setPlaceholderText(
-            "请在这里填写主角信息，包含角色名（必填）、角色特征、人物关系、参与的情节等，此项必须填写！")
+            "请在这里填写主角信息，包含角色名（必填）、角色特征、人物关系、参与的情节等")
         self.role_info_edit.setFont(QFont("Microsoft YaHei", 12))
         self.role_info_edit.setStyleSheet("""
                     QTextEdit {
@@ -158,11 +162,6 @@ class AnnotationInterface(Ui_Annotation, QFrame):
             QMessageBox.warning(self, "警告", "视频与字幕数量不一致，请检查后重试")
             return
 
-        # 可以不填写
-        # if not role_info:
-        #     QMessageBox.warning(self, "警告", "请填写角色信息后再开始")
-        #     return
-
         pairs = list(zip(video_paths, subtitle_paths))
 
         print(video_paths)
@@ -183,8 +182,11 @@ class AnnotationInterface(Ui_Annotation, QFrame):
 
         if self.annotation_option == 0:
             self.worker = BatchAnnotationWorker(pairs, role_info, output_root, self.extraOutputBtn.isChecked())
-        else:
+        elif self.annotation_option == 1:
             self.worker = BatchAnnotationWorker_with_AudioFeature(pairs, role_info, output_root, self.extraOutputBtn.isChecked(), if_translate=self.language_input.text() != self.sub_language_input.text(), language= self.language_input.text())
+        elif self.annotation_option == 2:
+            self.worker = BatchAnnotationWorker_with_AudioFeature_no_split(pairs, role_info, output_root, self.extraOutputBtn.isChecked(), if_translate=self.language_input.text() != self.sub_language_input.text(), language=self.language_input.text())
+
         # self.worker = BatchAnnotationWorker_with_AudioFeature(pairs, role_info, output_root, self.extraOutputBtn.isChecked(), if_translate=self.annotation_option == 2)
         self.worker.progress.connect(self._on_progress)
         self.worker.finished.connect(self._on_general_finished)

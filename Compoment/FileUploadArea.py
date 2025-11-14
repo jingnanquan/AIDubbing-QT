@@ -3,8 +3,8 @@ import sys
 from PyQt5.QtWidgets import (QFrame, QVBoxLayout, QHBoxLayout, QLabel,
                              QFileDialog, QScrollArea, QWidget, QListWidget,
                              QListWidgetItem, QSpacerItem, QSizePolicy, QApplication, QMainWindow)
-from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtGui import QFont, QDragEnterEvent, QDropEvent, QMouseEvent
+from PyQt5.QtCore import Qt, pyqtSignal, QUrl
+from PyQt5.QtGui import QFont, QDragEnterEvent, QDropEvent, QMouseEvent, QDesktopServices
 from pypinyin import pinyin
 from qfluentwidgets import PushButton, ListWidget
 import os
@@ -319,11 +319,10 @@ class HiddenScrollArea(QScrollArea):
         self.max_height = max_height
         self.update_height()
 
-    def add_item(self, text: str):
-        self.file_paths.append(text)
-        self.list_widget.addItem(QListWidgetItem(os.path.basename(text)))
-        # self.list_widget.item(0).setBackground(QBrush(QColor(0, 255, 0)))
-        self.update_height()
+    # def add_item(self, text: str):
+    #     self.file_paths.append(text)
+    #     self.list_widget.addItem(QListWidgetItem(os.path.basename(text)))
+    #     self.update_height()
 
     def add_items(self, file_paths: []):
         """添加文件项"""
@@ -331,6 +330,8 @@ class HiddenScrollArea(QScrollArea):
             self.file_paths.append(path)
             file_name = os.path.basename(path)
             self.list_widget.addItem(QListWidgetItem(file_name))
+
+        self.list_widget.itemClicked.connect(self.on_item_clicked)
         self.update_height()
 
     def clear_files(self):
@@ -349,6 +350,23 @@ class HiddenScrollArea(QScrollArea):
         spacing = self.list_widget.spacing() if hasattr(self.list_widget, "spacing") else 5
         new_height = int(min((count-1) * item_height + spacing + 65, self.max_height))
         self.setFixedHeight(new_height)
+
+    def on_item_clicked(self, item):
+        index = self.list_widget.row(item)
+        path = self.file_paths[index]
+        if os.path.exists(path):
+            if os.path.isdir(path):
+                # 如果是文件夹，直接打开
+                QDesktopServices.openUrl(QUrl.fromLocalFile(path))
+            elif os.path.isfile(path):
+                print(sys.platform)
+                if sys.platform == "win32":
+                    os.system(f'explorer /select,"{path}"')
+                else:
+                    folder_path = os.path.dirname(path)
+                    QDesktopServices.openUrl(QUrl.fromLocalFile(folder_path))
+        else:
+            print("Path does not exist")
 
 
 

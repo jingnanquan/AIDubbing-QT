@@ -16,6 +16,11 @@ from Service.uvrMain.separate import AudioPre
 from Service.videoUtils import get_audio_np_from_video, _probe_video_duration_ms
 
 
+'''
+废弃原因，串行并且采用原始的情节提取+标注的方式，不准确
+'''
+
+
 class BatchAnnotationWorker_with_AudioFeature(QThread):
     """
     QThread worker that uses a ThreadPoolExecutor to annotate roles for each (video, srt) pair in parallel.

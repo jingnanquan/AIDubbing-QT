@@ -1,6 +1,7 @@
 import datetime
 import os
 
+import librosa
 import numpy as np
 import soundfile as sf
 from Config import AUDIO_SEPARATION_FOLDER
@@ -40,3 +41,31 @@ def split_roles_audio(subtitles: dict, audio_path: str, output_path = AUDIO_SEPA
         role_audio_path[key] = filePath
         sf.write(filePath, clip, samplerate)
     return role_subtitles, audio, samplerate, role_audio_path
+
+
+def audio_speed(audio: np.ndarray, speed: float) -> np.ndarray:
+    """
+    改变音频的播放速度
+    :param audio: 输入音频数组
+    :param speed: 播放速度倍数，大于1为加速，小于1为减速
+    :param sr: 音频采样率，默认44100
+    :return: 改变速度后的音频数组
+    """
+    # 计算新的音频长度
+    if audio.shape[1] == 2:
+        res_audio_mono = audio[:, 0]  # 取单声道
+        original_rms = librosa.feature.rms(y=res_audio_mono)[0].mean()
+        res_audio_stretched = librosa.effects.time_stretch(res_audio_mono, rate=speed)
+        res_audio_stretched = res_audio_stretched * (
+                original_rms / (librosa.feature.rms(y=res_audio_stretched)[0].mean() + 1e-6))  # 恢复到原音量
+        res_audio_stretched = np.vstack([res_audio_stretched, res_audio_stretched]).T
+        res_audio = res_audio_stretched
+    else:
+        res_audio_mono = audio
+        original_rms = librosa.feature.rms(y=res_audio_mono)[0].mean()
+        res_audio_stretched = librosa.effects.time_stretch(res_audio_mono, rate=speed)
+        res_audio_stretched = res_audio_stretched * (
+                original_rms / (librosa.feature.rms(y=res_audio_stretched)[0].mean() + 1e-6))  # 恢复到原音量
+        res_audio = res_audio_stretched
+
+    return res_audio

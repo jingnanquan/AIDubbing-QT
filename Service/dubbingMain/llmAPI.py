@@ -242,8 +242,6 @@ class LLMAPI():
         return result_dict
 
 
-
-
     def extract_audio_to_mp3_bytes(self, video_path):
         # 加载视频文件（pydub 依赖 ffmpeg）
         audio = AudioSegment.from_file(video_path)
@@ -509,7 +507,7 @@ class LLMAPI():
             result_dict = json.loads(raw_json)
 
         except Exception as e:
-            print(f"角色抽取异常")
+            print(f"角色标注异常")
             self.connect.gemini_status = False
             raise e
         return result_dict
@@ -571,38 +569,6 @@ class LLMAPI():
             self.connect.gemini_status = False
             raise e
         return result_dict["subtitle_list"]
-
-    
-    def speaker_diarization(self, video_path: str, api_provider="", label_status=None):
-            prompt = f"""你是一名专业的音频分析专家，能从指定音频中进行asr，提取出对话内容。并且你最厉害的点在于能通过声纹进行聚类区分不同的说话人，能够做到Which speaker(s) spoke when?，
-在面对重叠语音时，也能通过精细的检测确定某一片时间范围内是哪几个说话人在说话。
-接下来你需要认真分析音频，返回说话人日志，格式如下：
-[{{"start": 0:0:0,100, "end": 0:0:2,232, "speaker": "张三", "text":"你今天吃了吗"}}, {{"start": 0:0:3,156, "end": 0:0:8,345, "speaker": "李四", "text":"今天特地自己烹饪，美美饱餐一顿"}}]
-"""
-
-            try:
-                print(prompt)
-                audio_bytes = self.extract_audio_to_mp3_bytes(video_path)
-                from google.genai import types
-                response = self.connect.global_gemini_client.models.generate_content_stream\
-                    (model="gemini-2.5-pro",
-                     contents=[prompt, types.Part.from_bytes(
-                      data=audio_bytes,
-                      mime_type='audio/mp3',
-                    )])
-                response_text = ""
-                for chunk in response:
-                    print(chunk.text, end="")
-                    response_text += chunk.text
-                result = response_text
-            except Exception as e:
-                print(f"⚠️llm处理异常：{e}")
-                self.connect.gemini_status = False
-                raise
-            time.sleep(1)  # 避免速率过快
-
-            # 后续写入该文件到日志中
-            return result
 
     def translate_subtitle_with_audio(self, subtitle_text, video_path: str, language: str = ""):
         """
@@ -721,7 +687,9 @@ class LLMAPI():
                      contents=[prompt, types.Part.from_bytes(
                          data=audio_bytes,
                          mime_type='audio/mp3',
-                     )])
+                     )],
+                     config=types.GenerateContentConfig(response_mime_type="application/json")
+                     )
                 response_text = ""
                 for chunk in response:
                     print(chunk.text, end="")
@@ -883,7 +851,7 @@ class LLMAPI():
             result_dict = json.loads(raw_json)
 
         except Exception as e:
-            print(f"角色抽取异常")
+            print(f"角色校验异常")
             self.connect.gemini_status = False
             raise e
         return result_dict
@@ -903,4 +871,37 @@ if __name__ == '__main__':
     api = LLMAPI.getInstance()
     api.speaker_diarization("E:\\offer\\AI配音web版\\AIDubbing-QT-main\\服务器保卫战.mp3")
 
+
+
+
+#     def speaker_diarization(self, video_path: str, api_provider="", label_status=None):
+#             prompt = f"""你是一名专业的音频分析专家，能从指定音频中进行asr，提取出对话内容。并且你最厉害的点在于能通过声纹进行聚类区分不同的说话人，能够做到Which speaker(s) spoke when?，
+# 在面对重叠语音时，也能通过精细的检测确定某一片时间范围内是哪几个说话人在说话。
+# 接下来你需要认真分析音频，返回说话人日志，格式如下：
+# [{{"start": 0:0:0,100, "end": 0:0:2,232, "speaker": "张三", "text":"你今天吃了吗"}}, {{"start": 0:0:3,156, "end": 0:0:8,345, "speaker": "李四", "text":"今天特地自己烹饪，美美饱餐一顿"}}]
+# """
+#
+#             try:
+#                 print(prompt)
+#                 audio_bytes = self.extract_audio_to_mp3_bytes(video_path)
+#                 from google.genai import types
+#                 response = self.connect.global_gemini_client.models.generate_content_stream\
+#                     (model="gemini-2.5-pro",
+#                      contents=[prompt, types.Part.from_bytes(
+#                       data=audio_bytes,
+#                       mime_type='audio/mp3',
+#                     )])
+#                 response_text = ""
+#                 for chunk in response:
+#                     print(chunk.text, end="")
+#                     response_text += chunk.text
+#                 result = response_text
+#             except Exception as e:
+#                 print(f"⚠️llm处理异常：{e}")
+#                 self.connect.gemini_status = False
+#                 raise
+#             time.sleep(1)  # 避免速率过快
+#
+#             # 后续写入该文件到日志中
+#             return result
 

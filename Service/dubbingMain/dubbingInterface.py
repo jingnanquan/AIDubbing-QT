@@ -1,5 +1,6 @@
 import copy
 import datetime
+import logging
 import os
 import re
 import time
@@ -11,7 +12,9 @@ from elevenlabs import CharacterAlignmentResponseModel
 from Config import PROMPT_AUDIO_FOLDER, VIDEO_UPLOAD_FOLDER, AUDIO_SEPARATION_FOLDER
 from ProjectCompoment.dubbingDatasetUtils import dubbingDatasetUtils
 from ProjectCompoment.dubbingEntity import Project, Subtitle
-from Service.generalUtils import calculate_time
+from Service.audioUtils import audio_speed
+from Service.generalUtils import calculate_time, find_substring_position, time_str_to_ms, \
+    ends_with_character_or_punctuation
 
 
 class dubbingInterface:
@@ -278,7 +281,7 @@ class dubbingInterface:
 
         return audio[start:end], time_alignments
 
-    def trim_silence_with_time_alignments(self, audio: np.ndarray, time_alignments:CharacterAlignmentResponseModel, samplerate: int=44100):  # 大概对应频率为5000，低于人声频率
+    def trim_silence_with_time_alignments(self, audio: np.ndarray, time_alignments:CharacterAlignmentResponseModel, samplerate: int=44100, rate: float=0.1):  # 大概对应频率为5000，低于人声频率
 
         # print(time_alignments)
         characters = time_alignments.characters
@@ -291,11 +294,11 @@ class dubbingInterface:
         if characters and characters[0] == " ":  # 开头是空格
             next_char_start = time_seconds[1]
             space_duration = next_char_start - time_seconds[0]
-            start_s = time_seconds[0] + space_duration * 0.9  # 保留10%的空格时间
+            start_s = time_seconds[0] + space_duration * (1-rate)  # 保留10%的空格时间
             # 更新字符和时间数组
             characters = characters[1:]
             time_seconds = time_seconds[1:]
-            time_seconds[0] = start_s
+            time_seconds[0] = start_s  # 方便后续统一减掉
         else:
             start_s = time_seconds[0]
 
@@ -303,7 +306,7 @@ class dubbingInterface:
         if characters and characters[-1] == " ":  # 结尾是空格
             prev_char_end = time_seconds[-2]
             space_duration = time_seconds[-1] - prev_char_end
-            end_s = prev_char_end + space_duration * 0.1  # 保留10%的空格时间
+            end_s = prev_char_end + space_duration * rate  # 保留10%的空格时间
             # 更新字符和时间数组
             characters = characters[:-1]
             time_seconds = time_seconds[:-1]
@@ -360,3 +363,113 @@ class dubbingInterface:
             for subtitle in dubbing_subtitles:
                 print(subtitle.__dict__)
             dubbingDatasetConn.insert_subtitle_many(dubbing_subtitles)
+
+    def adjust_speed2(self, input_audio: np.ndarray, characters: list, time_seconds: list,
+                     target_frames: int, sr=44100, up_tolerance=None, subtitle: dict = None, index: int = 0, target_subtitles: list = None, subtitle_indices: dict = None):
+        input_frames = input_audio.shape[0]
+        global_speed = input_frames / target_frames
+        # 我希望加速倍数在1.1以内并且绝对值不超过12000 大概0.28s
+        if global_speed>0.96 and global_speed<1.1:
+            res_audio = audio_speed(input_audio, global_speed)
+            return res_audio
+        else:
+            split_subtitles_index = list(subtitle_indices.values())[index]
+            split_subtitles_a = target_subtitles[split_subtitles_index[0]-1: split_subtitles_index[-1]]
+            split_subtitles = []
+
+            print("subtitle:",subtitle)
+            print("split_subtitles_a:",split_subtitles_a)
+            i = 0
+            while i < len(split_subtitles_a):
+                start = split_subtitles_a[i]["start"]
+                text = split_subtitles_a[i]["text"]
+
+                end = time_str_to_ms(split_subtitles_a[i]["end"])
+                while i+1 < len(split_subtitles_a):
+                    next_start = time_str_to_ms(split_subtitles_a[i+1]["start"])
+                    next_text = split_subtitles_a[i+1]["text"]
+                    if next_start-end <= 250 or ends_with_character_or_punctuation(text)!='punctuation':
+                        text = " ".join([text, next_text])
+                        end = time_str_to_ms(split_subtitles_a[i+1]["end"])
+                        i += 1
+                        continue
+                    break
+                end = split_subtitles_a[i]["end"]
+                split_subtitles.append({"text": text, "start": start, "end": end})
+                i += 1
+
+            print("split_subtitles:",split_subtitles)
+            # print("target_frames:", target_frames)
+            # print(characters)
+            # print(time_seconds)
+
+
+            # 这里获取的结果是
+            # split_subtitles=[{'text': 'You actually dared to hit me!', 'start': '00:00:04,933', 'end': '00:00:05,933'},{'text': 'Make me kneel down and admit my mistake.', 'start': '00:00:06,130', 'end': '00:00:07,130'}]
+            # subtitles = [{'text': 'You actually dared to hit me! Make me kneel down and admit my mistake.', 'start': '00:00:04,933', 'end': '00:00:07,130'}]
+            string = "".join(characters)
+            pointer = 0
+            offset_times = int((time_str_to_ms(split_subtitles[0]["start"])*sr)/1000)
+            zeros_audio = np.zeros((target_frames+88200, input_audio.shape[1])) # 预留88200个样本，防止加速后超出目标长度
+            print(zeros_audio.shape)
+
+            for  index, sub in enumerate(split_subtitles):
+                print("==========")
+                start, end = find_substring_position(string, sub["text"])
+                if start == -1 and end == -1:
+                    logging.warning(f"字幕 {sub['text']} 未在文本中找到匹配项")
+                    continue
+
+                # 这边的方案，是如果>1, 就是加速，我是希望加速因子小于本身的global_speed
+                '''
+                if global speed>1.1
+                    if speed<1   # 就是要减速, 这个情况就是，如果你减速了，那么其他地方就可能会加速
+                        speed = max(speed 0.95)  # 你可以减速，但是我减速的阈值就是0.95  减速最好的点就是，它是不会有重叠的
+                    if speed>1 and speed <= 1.15:  # 这边需要加速
+                        speed
+                    if speed > 1.15
+                        我重新计算一下前方的阈值
+                        speed = new_speed
+                if global_speed<0.96:
+                    speed = max(speed, 0.96)
+                '''
+
+
+                # print(start, end)
+                start = time_seconds[start]*sr
+                end = time_seconds[end+1]*sr
+                section_audio = input_audio[int(start): int(end)+1]
+                # print(start, end)
+
+                align_start = int((time_str_to_ms(sub["start"])*sr)/1000)-offset_times  # 270465
+                align_end = int((time_str_to_ms(sub["end"])*sr)/1000)+1-offset_times  # 314565
+                speed = section_audio.shape[0] / (align_end - align_start)
+                # print(align_start, align_end)
+                print(speed)
+                print(section_audio.shape)
+
+                # 调整speed和start
+                if speed<1:
+                    speed = max(speed, 0.94)
+                elif speed > 1.15:
+                    align_start = int((align_start+pointer)/2)
+                    speed = section_audio.shape[0] / (align_end - align_start)
+                    if speed <=1.15:
+                        speed = max(speed, 0.96)
+                    else:
+                        next_end = (int((time_str_to_ms(split_subtitles[index+1]["start"])*sr)/1000)+1-offset_times) if index+1 < len(split_subtitles) else align_end
+                        align_end = int((align_end+next_end)/2)
+                        speed = section_audio.shape[0] / (align_end - align_start)
+                        speed = max(speed, 0.96)
+
+                align_audio = audio_speed(section_audio, speed)
+                # print(align_audio.shape)
+                zeros_audio[align_start: align_start+align_audio.shape[0]] += align_audio
+                pointer = align_start+align_audio.shape[0]
+
+
+            zeros_audio = zeros_audio[0: pointer]
+            return zeros_audio
+
+
+        # return res_audio

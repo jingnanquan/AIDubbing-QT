@@ -14,7 +14,7 @@ from Compoment.FileUploadArea import FileUploadArea
 from Compoment.PathDialog import PrettyPathDialog
 from Service.videoUtils import _probe_video_duration_ms
 from ThreadWorker.ToolsWorker import CompressVideoWorker, MergeVideoWorker, MergeSubtitleWorker, CloneVoiceWorker, \
-    SplitSubtitleWorker, SyncSubtitleWorker, ClearBGMWorker, SplitVideoWorker
+    SplitSubtitleWorker, SyncSubtitleWorker, ClearBGMWorker, SplitVideoWorker, GetVideoAudioWorker
 from UI.Ui_tools import Ui_Tools
 
 
@@ -93,6 +93,12 @@ class ToolsInterface(Ui_Tools, QFrame):
         self.dstVideoBox.layout().addWidget(self.split_dst_video_upload_area)
         self.splitVideoBtn.clicked.connect(self._split_video)
 
+        self.srcVideoBox_2.setLayout(QVBoxLayout())
+        self.srcVideoBox_2.layout().setContentsMargins(0,0,0,0)
+        self.get_src_video_audio_upload_area = FileUploadArea(label_text="视频文件", file_types=["*.mp4", "*.avi"])
+        self.srcVideoBox_2.layout().addWidget(self.get_src_video_audio_upload_area)
+        self.getAudioBtn.clicked.connect(self._getAudio)
+
 
 
         # self.frame_1.setMinimumHeight(self.frame_1.sizeHint().height())
@@ -115,6 +121,23 @@ class ToolsInterface(Ui_Tools, QFrame):
         # self.frame_6.setLayout(QVBoxLayout())
         # self.testarea3 = FileUploadArea(label_text="视频文件", file_types=["*.mp4", "*.avi"])
         # self.frame_6.layout().addWidget(self.testarea3)
+
+    def _getAudio(self):
+        video_paths = self.get_src_video_audio_upload_area.file_paths
+        if not video_paths:
+            QMessageBox.warning(self, "警告", "请上传视频文件")
+            return
+        self.loading_msg = QMessageBox(self)
+        self.loading_msg.setWindowTitle("请稍候")
+        self.loading_msg.setText("正在提取中，请稍候...")
+        self.loading_msg.setStandardButtons(QMessageBox.NoButton)
+        self.loading_msg.setModal(True)
+        self.loading_msg.show()
+        QApplication.processEvents()
+
+        self.worker = GetVideoAudioWorker(video_paths)
+        self.worker.finished.connect(self._on_general_finished)
+        self.worker.start()
 
     def _compress_video(self):
         print("压缩视频")

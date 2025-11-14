@@ -742,3 +742,49 @@ class SplitVideoWorker(QThread):
                 "msg": f"视频分割失败: {str(e)}",
                 "result_path": ""
             })
+
+class GetVideoAudioWorker(QThread):
+    finished = pyqtSignal(dict)
+
+    def __init__(self, video_path: list[str], parent=None):
+        super().__init__(parent)
+        self.video_paths = video_path
+
+    def run(self):
+        print("enter: 获取视频音频")
+        try:
+            dir = os.path.dirname(self.video_paths[0])
+            result_dir = os.path.join(dir, "audio")
+            os.makedirs(result_dir, exist_ok=True)
+
+            for video_path in self.video_paths:
+
+                audio_path = os.path.join(result_dir, os.path.splitext(os.path.basename(video_path))[0] + ".wav")
+
+                audio, sr = get_audio_np_from_video(video_path)
+
+                sf.write(audio_path, audio, sr)
+
+            self.finished.emit({
+                "msg": f"获取音频完成! 共生成 {len(self.video_paths)} 个文件",
+                "result_path": result_dir,
+            })
+
+        except Exception as e:
+            print(f"❌ 获取音频出错: {e}")
+            self.finished.emit({
+                "msg": f"获取音频失败: {str(e)}",
+                "result_path": ""
+            })
+
+            # (
+            #     ffmpeg
+            #     .input(video_path)
+            #     .output(audio_path, acodec='pcm_s16le', ac=1, ar='16k')
+            #     .overwrite_output()
+            #     .run()
+            # )
+            # print(f"✅ 已保存音频: {audio_path}")
+
+
+

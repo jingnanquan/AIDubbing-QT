@@ -15,6 +15,8 @@ from sklearn.manifold import TSNE
 import torch
 from modelscope.models.audio.sv.ERes2NetV2 import SpeakerVerificationERes2NetV2
 from modelscope.pipelines.audio.speaker_verification_eres2netv2_pipeline import ERes2NetV2_Pipeline
+from sklearn.metrics import pairwise_distances
+from sklearn.preprocessing import normalize
 
 
 class SpeakerEmbeddingCluster:
@@ -163,22 +165,37 @@ class SpeakerEmbeddingCluster:
             if len(embeddings) == 0:
                 return np.array([])
 
-            # 使用HDBSCAN进行聚类
+            embeddings = embeddings.astype(np.float64)
+            embeddings = normalize(embeddings, norm='l2')
+
+            clusterer = hdbscan.HDBSCAN(
+                min_cluster_size=3,
+                min_samples=3,
+                metric='euclidean'  # 可省略
+            )
+            labels = clusterer.fit_predict(embeddings)
+
+            # embeddings = normalize(embeddings, norm='l2')
+            # # 使用HDBSCAN进行聚类
+            # # 计算 cosine 距离矩阵
+            # distance_matrix = pairwise_distances(embeddings, metric='cosine')
+            # # HDBSCAN 聚类
             # clusterer = hdbscan.HDBSCAN(
             #     min_cluster_size=min_cluster_size,
-            #     branch_detection_data=True,
-            #     metric='cosine'
+            #     metric='precomputed'
             # )
-            # labels = clusterer.fit_predict(embeddings)
-            clustering_model = AgglomerativeClustering(
-                n_clusters=None,  # 不预设簇的数量
-                distance_threshold=0.7,  # 设置簇合并的距离阈值
-                metric='cosine',
-                linkage='average'
-            )
+            # labels = clusterer.fit_predict(distance_matrix)
+
+
+            # clustering_model = AgglomerativeClustering(
+            #     n_clusters=None,  # 不预设簇的数量
+            #     distance_threshold=0.7,  # 设置簇合并的距离阈值
+            #     metric='cosine',
+            #     linkage='average'
+            # )
 
             # 拟合数据并获取标签
-            labels = clustering_model.fit_predict(embeddings)
+            # labels = clustering_model.fit_predict(embeddings)
 
             n_clusters = len(set(labels)) - (1 if -1 in labels else 0)
             self.logger.info(f"聚类完成，发现{n_clusters}个说话人")
@@ -305,6 +322,26 @@ class SpeakerEmbeddingCluster:
                 self.visualize_clusters(embeddings, labels)
 
             return embeddings, labels
+
+        except Exception as e:
+            self.logger.error(f"说话人分析失败: {e}")
+            return np.array([]), np.array([])
+
+    def analyze_speakers_embs(self, audio_files: List[Union[str, np.ndarray]],
+                         min_cluster_size: int = 2,
+                         visualize: bool = True) -> Tuple[np.ndarray, np.ndarray]:
+        """完整的说话人分析流程
+        只获取embs
+        """
+        try:
+            self.logger.info(f"开始分析{len(audio_files)}个音频文件的说话人...")
+
+            # 提取embedding
+            embeddings = self.extract_embeddings(audio_files)
+            if len(embeddings) == 0:
+                return np.array([]), np.array([])
+
+            return embeddings, np.array([])
 
         except Exception as e:
             self.logger.error(f"说话人分析失败: {e}")

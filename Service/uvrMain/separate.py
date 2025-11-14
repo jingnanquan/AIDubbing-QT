@@ -132,8 +132,8 @@ class AudioPre():
 
         print("结束推理")
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        back_filename = os.path.join(output_path, 'background-{}-{}.wav'.format(name,timestamp))
-        vocal_filename = os.path.join(output_path, 'vocal-{}-{}.wav'.format(name,timestamp))
+        back_filename = os.path.join(output_path, 'background_{}_{}.wav'.format(name,timestamp))
+        vocal_filename = os.path.join(output_path, 'vocal_{}_{}.wav'.format(name,timestamp))
 
         if on_progress:
             on_progress(14, "")

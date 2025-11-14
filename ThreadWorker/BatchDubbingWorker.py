@@ -1,5 +1,4 @@
 import os
-import re
 import time
 import traceback
 
@@ -95,7 +94,7 @@ class BatchDubbingWorker(QThread):
                     this_voice_param = {}
                     for role_name in set(role_match_list):
                         this_voice_param[role_name] = self.voice_params.get(role_name, "")
-                    result = ElevenLabsAPI.dubbing_new_split(target_subs, role_match_list,
+                    result = ElevenLabsAPI.dubbing_new_split2(target_subs, role_match_list,
                                                              video_path, this_voice_param,
                                                              self.output_root_dir, self.cps, on_progress=self.on_progress)
                     if "error" in result:

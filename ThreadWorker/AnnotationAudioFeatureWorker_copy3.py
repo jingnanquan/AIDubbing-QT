@@ -2,11 +2,25 @@ import os
 import re
 import traceback
 
+# import ffmpeg
 from PyQt5.QtCore import QThread, pyqtSignal
+# import soundfile as sf
+# from pyparsing import originalTextFor, original_text_for
+# from scipy import signal
+# from shapely.ops import orient
+
+# from Service.ERes2NetV2.audiosimilarity import SpeakerEmbeddingCluster
+# from Service.ERes2NetV2.launch_visualization import launch_visualization_safely
+# from Service.dubbingMain.llmAPI import LLMAPI
 from Service.generalUtils import time_str_to_ms, ms_to_time_str
 from Service.subtitleUtils import parse_subtitle_uncertain
 from Service.videoUtils import get_audio_np_from_video, _probe_video_duration_ms
 
+
+'''
+正常的单集标注，能够适用于20min左右 500条字幕的视频
+情节完整，因此不需要主角列表、也不需要后处理做聚类
+'''
 
 class BatchAnnotationWorker_with_AudioFeature(QThread):
     """
@@ -24,6 +38,8 @@ class BatchAnnotationWorker_with_AudioFeature(QThread):
         self.extraOutput = extraOutput
         self.if_translate = if_translate
         self.language = language
+        # if self.if_translate:
+        #     self.max_workers = 3
 
     def run(self):
         try:
@@ -32,12 +48,10 @@ class BatchAnnotationWorker_with_AudioFeature(QThread):
             self.srt_dir = os.path.join(self.output_root_dir, "字幕")
             self.role_dir = os.path.join(self.output_root_dir, "角色表")
             self.processing_dir = os.path.join(self.output_root_dir, "中间结果")
-            self.video_dir = os.path.join(self.output_root_dir, "视频中间结果")
             os.makedirs(self.summary_dir, exist_ok=True)
             os.makedirs(self.srt_dir, exist_ok=True)
             os.makedirs(self.role_dir, exist_ok=True)
             os.makedirs(self.processing_dir, exist_ok=True)
-            os.makedirs(self.video_dir, exist_ok=True)
 
             from Service.dubbingMain.llmAPI import LLMAPI
             LLMAPI.getInstance()  # initialize once
@@ -210,6 +224,7 @@ class BatchAnnotationWorker_with_AudioFeature(QThread):
                         pct = int(completed / total * 100)
                         self.progress.emit(pct, f"正在处理：{completed}/{total}，失败 {len(failed)}...   ")
 
+            failed2 = []
             # save error log if any
             if failed:
                 error_log_path = os.path.join(self.output_root_dir, "error_log.txt")
@@ -230,3 +245,76 @@ class BatchAnnotationWorker_with_AudioFeature(QThread):
                 "msg": f"发生错误: {e}",
                 "result_path": self.output_root_dir if os.path.isdir(self.output_root_dir) else ""
             })
+
+
+
+
+
+
+            # elif self.extraOutput:
+            #     # 先合并字幕：使用成功项，按原顺序叠加 offset（累计时长）
+            #     try:
+            #         self.progress.emit(1, "  合并字幕中...  ")
+            #         merged_subtitle_path = os.path.join(self.output_root_dir, "merged_subtitle.srt")
+            #         current_index = 1
+            #         merged_lines = []
+            #         cumulative_offset = 0
+            #         for res in sub_results:
+            #             if res is None:
+            #                 continue
+            #             path, duration_ms = res
+            #             with open(path, "r", encoding="utf-8") as f:
+            #                 content = f.read()
+            #             blocks = re.split(r"\n\s*\n", content.strip(), flags=re.MULTILINE)
+            #             i_block = 1
+            #             for block in blocks:
+            #                 lines = block.strip().split("\n")
+            #                 if len(lines) < 2:
+            #                     raise Exception(f"字幕文件{path}第{i_block}块格式错误")
+            #                 time_line = lines[1] if "-->" in lines[1] else lines[0]
+            #                 m = re.match(r"(\d{2}:\d{2}:\d{2},\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2},\d{3})", time_line)
+            #                 if not m:
+            #                     raise Exception(f"字幕文件{path}第{i_block}块格式错误")
+            #                 start_time, end_time = m.groups()
+            #                 start_ms = int(time_str_to_ms(start_time) + cumulative_offset)
+            #                 end_ms = int(time_str_to_ms(end_time) + cumulative_offset)
+            #                 new_block = [str(current_index)]
+            #                 new_block.append(f"{ms_to_time_str(start_ms)} --> {ms_to_time_str(end_ms)}")
+            #                 if "-->" in lines[1]:
+            #                     new_block.extend(lines[2:])
+            #                 else:
+            #                     raise Exception(f"字幕文件{path}第{i_block}块格式错误")
+            #                 merged_lines.append("\n".join(new_block))
+            #                 current_index += 1
+            #                 i_block += 1
+            #             cumulative_offset += max(0, duration_ms)
+            #
+            #         with open(merged_subtitle_path, "w", encoding="utf-8") as f:
+            #             f.write("\n\n".join(merged_lines))
+            #     except Exception:
+            #         failed2.append(("MERGE", "SUBTITLE", "合并字幕失败", traceback.format_exc()))
+            #
+            #     try:
+            #         merged_video_path = os.path.join(self.output_root_dir, "merged_video.mp4")
+            #         video_files_ok = [v for (res, (v, s)) in zip(sub_results, self.pairs) if res is not None]
+            #         self.progress.emit(2, "  合并视频中...  ")
+            #         streams = []
+            #         for fpath in video_files_ok:
+            #             inp = ffmpeg.input(fpath)
+            #             v = inp.video
+            #             a = inp.audio.filter('aresample', **{'async': 1, 'first_pts': 0})
+            #             streams += [v, a]
+            #         concat = ffmpeg.concat(*streams, v=1, a=1, n=len(video_files_ok)).node
+            #         vcat, acat = concat[0], concat[1]
+            #         (
+            #             ffmpeg
+            #             .output(vcat, acat, merged_video_path, vcodec='libx264', acodec='aac')
+            #             .global_args('-fflags', '+genpts')
+            #             .overwrite_output()
+            #             .run()
+            #         )
+            #     except Exception:
+            #         failed2.append(("MERGE", "VIDEO", "合并视频失败", traceback.format_exc()))
+            # if failed2:
+            #     msg2 = {info[2] for info in failed2}
+            #     msg += str(msg2)

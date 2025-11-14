@@ -1,3 +1,5 @@
+import logging
+
 from qfluentwidgets import RadioButton, LineEdit, BodyLabel, ComboBox
 
 from Compoment.DubbingParamWindows2 import spare_voices, prepared_voices, VoiceSelectorWindow
@@ -17,10 +19,8 @@ from Compoment.DraggableTextEdit import DraggableTextEdit
 from Compoment.FileUploadArea import FileUploadArea
 from Compoment.PathDialog import PrettyPathDialog
 from Service.datasetUtils import datasetUtils
-from Service.dubbingMain.dubbingElevenLabs import dubbingElevenLabs
 from Service.generalUtils import time_str_to_ms, ms_to_time_str, mixed_sort_key, is_valid_cps
 from ThreadWorker.BatchDubbingWorker import BatchDubbingWorker
-# from Service.dubbingMain.llmAPI import LLMAPI
 from Service.subtitleUtils import parse_subtitle, parse_subtitle_uncertain
 from UI.Ui_dubbing import Ui_Dubbing
 
@@ -111,6 +111,7 @@ class DubbingInterface(Ui_Dubbing, QFrame):
 
     def __init__(self, parent=None):
         super().__init__()
+        logging.warning("批量标注界面加载")
         print("批量标注界面加载")
         self.setupUi(self)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -133,6 +134,8 @@ class DubbingInterface(Ui_Dubbing, QFrame):
 
     def _setup_unfinished_ui(self):
 
+        self.extraOutputBtn.hide()
+
         self.folder_selector = SingleFolderSelector(RESULT_OUTPUT_FOLDER)
         self.operate_container.layout().insertWidget(0, self.folder_selector)
 
@@ -144,7 +147,7 @@ class DubbingInterface(Ui_Dubbing, QFrame):
 
         layout.addWidget(BodyLabel("cps阈值"))
         self.cps_input = LineEdit()
-        self.cps_input.setText("23")
+        self.cps_input.setText("40")   # 对于英语，给23比较合适
         layout.addWidget(self.cps_input)
 
 
@@ -382,15 +385,15 @@ class DubbingInterface(Ui_Dubbing, QFrame):
                     self.loading_msg.setText(text)
             QApplication.processEvents()
 
-    def get_voices_count(self):
-        try:
-            elevenlabs = dubbingElevenLabs.getInstance().elevenlabs
-            response = elevenlabs.voices.search(page_size=100, sort="created_at_unix", sort_direction="asc",voice_type="non-default")
-            print(f"已获取{len(response.voices)}个声源")
-            return response.total_count
-        except Exception as e:
-            print(f"获取声源数量失败: {e}")
-            return 0
+    # def get_voices_count(self):
+    #     try:
+    #         elevenlabs = dubbingElevenLabs.getInstance().elevenlabs
+    #         response = elevenlabs.voices.search(page_size=100, sort="created_at_unix", sort_direction="asc",voice_type="non-default")
+    #         print(f"已获取{len(response.voices)}个声源")
+    #         return response.total_count
+    #     except Exception as e:
+    #         print(f"获取声源数量失败: {e}")
+    #         return 0
 
 
 if __name__ == '__main__':
@@ -399,8 +402,11 @@ if __name__ == '__main__':
     # window.compress_video_upload_area.add_files([r"E:\offer\配音任务2\伤心者联盟\video\compress\compressed_伤心者同盟（英）-1.mp4", r"E:\offer\配音任务2\伤心者联盟\video\compress\compressed_伤心者同盟（英）-3.mp4"])
     # window.merge_subtitle_upload_area.add_files([r"E:\offer\配音任务2\伤心者联盟\英语修改后的srt\1-cps-带角色.srt", r"E:\offer\配音任务2\伤心者联盟\英语修改后的srt\3.srt"])
 
-    window.compress_video_upload_area.add_files([r"E:\offer\配音任务2\伤心者联盟\video\compress\compressed_伤心者同盟（英）-4.mp4", r"E:\offer\配音任务2\伤心者联盟\video\compress\compressed_伤心者同盟（英）-5.mp4"])
-    window.merge_subtitle_upload_area.add_files([r"E:\offer\配音任务2\伤心者联盟\__已标记校验的字幕\英\伤心者同盟（英）-4.srt", r"E:\offer\配音任务2\伤心者联盟\__已标记校验的字幕\英\伤心者同盟（英）-5.srt"])
+    # window.compress_video_upload_area.add_files([r"E:\offer\配音任务2\伤心者联盟\video\compress\compressed_伤心者同盟（英）-4.mp4", r"E:\offer\配音任务2\伤心者联盟\video\compress\compressed_伤心者同盟（英）-5.mp4"])
+    # window.merge_subtitle_upload_area.add_files([r"E:\offer\配音任务2\伤心者联盟\__已标记校验的字幕\英\伤心者同盟（英）-4.srt", r"E:\offer\配音任务2\伤心者联盟\__已标记校验的字幕\英\伤心者同盟（英）-5.srt"])
+
+    window.compress_video_upload_area.add_files([r"E:\offer\配音任务2\伤心者联盟\video\compress\compressed_伤心者同盟（英）-4.mp4"])
+    window.merge_subtitle_upload_area.add_files([r"E:\offer\配音任务2\伤心者联盟\__已标记校验的字幕\英\伤心者同盟（英）-4.srt"])
     window.role_info_edit.setText("")
     window.show()
     sys.exit(app.exec_())

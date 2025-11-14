@@ -19,6 +19,7 @@ from Service.datasetUtils import datasetUtils
 from Service.dubbingMain.dubbingElevenLabs import dubbingElevenLabs
 from Service.dubbingMain.dubbingInterface import dubbingInterface
 from Service.dubbingMain.llmAPI import LLMAPI
+from Service.dubbingMain.llmAPI2 import LLMAPI2
 from Service.generalUtils import calculate_time
 from Service.subtitleUtils import adjust_subtitles_cps, parse_subtitle_uncertain
 from Service.uvrMain.separate import AudioPre
@@ -67,20 +68,27 @@ class dubbingElevenLabs3(dubbingInterface):
                 if on_progress: on_progress(10, "调整字幕cps中...")
                 target_subs, adjust_list, compressed_texts, adjust_indices = adjust_subtitles_cps(target_subs, int(cps), tolerate_factor)
             if on_progress: on_progress(20, "合并配音字幕中...")
-            role_subs = ""
-            i = 0
-            for subtitle in target_subs:
-                role_subs += f"""{subtitle["index"]} | {subtitle["start"]} --> {subtitle["end"]} | {subtitle["text"]} | {role_match_list[i]}\n"""
-                i += 1
-            dubbing_subs = LLMAPI.getInstance().merge_subtitle_with_index(role_subs)
+
+            dubbing_subs1 = LLMAPI2.getInstance().merge_subtitle_with_index(target_subs, role_match_list)
+            if not dubbing_subs1: raise Exception("合并配音字幕出现错误")
+            print(dubbing_subs1)
+            dubbing_subs = LLMAPI2.getInstance().correct_punctuation(dubbing_subs1)
+            print(dubbing_subs)
+
+
+            # role_subs = ""
+            # i = 0
+            # for subtitle in target_subs:
+            #     role_subs += f"""{subtitle["index"]} | {subtitle["start"]} --> {subtitle["end"]} | {subtitle["text"]} | {role_match_list[i]}\n"""
+            #     i += 1
+            # dubbing_subs = LLMAPI.getInstance().merge_subtitle_with_index(role_subs)
             # dubbing_subs = {}
             # dubbing_subs_list, role_ = parse_subtitle_uncertain(r"E:\offer\AI配音web版\8.13\AIDubbing-QT-main\OutputFolder\project_result\a视频_test-视频一键配音结果-20250820-095619\字幕-合并后的配音字幕.txt")
             # for i in range(len(dubbing_subs_list)):
             #     dubbing_subs[i] = {"start": dubbing_subs_list[i]["start"], "end":dubbing_subs_list[i]["end"],"text":dubbing_subs_list[i]["text"],"role":role_[i]}
 
             print(dubbing_subs)
-            if not dubbing_subs: raise Exception("合并配音字幕错误")
-
+            if not dubbing_subs: raise Exception("矫正字幕标点出现错误")
 
             if on_progress: on_progress(30, "角色干音分片中...")
             back_path, vocal_path = AudioPre.getInstance()._path_audio_(video_audio_path, output_path=result_dir)
@@ -137,24 +145,28 @@ class dubbingElevenLabs3(dubbingInterface):
                         output_format="mp3_44100_192",
                         voice_settings=voice_setting,
                         previous_request_ids = previous_dict[role][-3:])
+
                     request_id = audio._response.headers.get("request-id")
+
+
                     time_alignments = audio.data.normalized_alignment
                     audio_bytes = base64.b64decode(audio.data.audio_base_64)
                     dub_audio = AudioSegment.from_file(io.BytesIO(audio_bytes))  # 读取配音音频段
                     dub_audio = dub_audio.set_frame_rate(samplerate)
                     res_audio = np.array(dub_audio.get_array_of_samples())
                     res_audio = res_audio.astype(np.float64) / 32768.0
-                    res_audio = np.vstack([res_audio, res_audio]).T  # 在变为双声道之前，先去除收尾的空
+                    res_audio = np.vstack([res_audio, res_audio]).T
                     res_frames = res_audio.shape[0]
 
-                    if all_audio is None:
+                    if all_audio is None:   # all_audio用于记录所有生成的音频便于后续剪辑
                         all_audio = np.copy(res_audio)
                     else:
                         empty_array = np.zeros((44100, 2), dtype=res_audio.dtype)  # 1s间隔
                         all_audio = np.concatenate([all_audio, empty_array, res_audio])
+
                     print("-音频长度(s):", res_frames/samplerate)
                     print("-限定长度(s):", source_frames/samplerate)
-                    if res_frames-source_frames >= 70000 and (res_frames/source_frames) >= 1.7:  # 1.6s且超出1.7倍
+                    if res_frames-source_frames >= 70000 and (res_frames/source_frames) >= 1.7:  # 超出1.6s且超出1.7倍
                         print("-超出长度1级: debug debug")
                         res_audio, time_alignments = self.trim_silence_remodify_time_alignments(res_audio,samplerate,time_alignments)
                         res_frames = res_audio.shape[0]
@@ -164,11 +176,13 @@ class dubbingElevenLabs3(dubbingInterface):
                             circle = True  # 该句，重新进行生成
                             retry -= 1
                             if retry<=0:
+                                print("-这句过于异常，取消配音")
                                 break
                         else:
                             circle = False
                     else:
                         circle = False
+
                 print("*时长判定结束")
                 if request_id: previous_dict[role].append(request_id)
                 speed = 1
@@ -255,6 +269,226 @@ class dubbingElevenLabs3(dubbingInterface):
                     except Exception as e:
                         print(e, "删除该声音失败")
 
+
+            return {"result_path": result_dir, "audio_file": output_audio_file, "video_file": output_video_file}
+        except Exception as e:
+            # 处理特定异常
+            print(f"配音过程发生错误: {e}")
+            traceback.print_exc()
+            return {"error": f"配音过程发生错误: {e}"}
+
+    def dubbing_new_split2(self, target_subs: list, role_match_list: list, video_path: str, voice_param: dict,
+                          output_path: str = RESULT_OUTPUT_FOLDER, cps: str = "", on_progress=None,
+                          delete=False) -> dict:
+        '''
+        delete 代表配音完是否删除克隆的声音
+        '''
+        if not os.path.exists(output_path):
+            output_path = RESULT_OUTPUT_FOLDER
+        timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        result_dir = os.path.join(output_path,
+                                  "{}-视频一键配音结果-{}".format(os.path.basename(video_path).split('.')[0],
+                                                                  timestamp))  # 创建一个文件夹
+        os.makedirs(result_dir, exist_ok=True)
+
+        try:
+            video_audio, samplerate = get_audio_np_from_video(video_path)
+            assert isinstance(video_audio, np.ndarray)
+            back_audio = np.zeros_like(video_audio)
+            # target_voice_audio = np.zeros_like(video_audio)  # 初始化目标人声音频
+            all_audio = None
+            print(back_audio.shape)
+            video_audio_path = os.path.join(result_dir, "视频-原音频.mp3")
+            sf.write(video_audio_path, video_audio, samplerate)
+
+            if cps:
+                if on_progress: on_progress(10, "调整字幕cps中...")
+                target_subs, adjust_list, compressed_texts, adjust_indices = adjust_subtitles_cps(target_subs, int(cps),
+                                                                                                  tolerate_factor)
+            if on_progress: on_progress(20, "合并配音字幕中...")
+
+            dubbing_subs1, subtitle_indices = LLMAPI2.getInstance().merge_subtitle_with_index(target_subs, role_match_list)
+            if not dubbing_subs1: raise Exception("合并配音字幕出现错误")
+            print(dubbing_subs1)
+            # dubbing_subs = dubbing_subs1
+            dubbing_subs = LLMAPI2.getInstance().correct_punctuation(dubbing_subs1)
+            print(dubbing_subs)
+            if not dubbing_subs: raise Exception("矫正字幕标点出现错误")
+
+            if on_progress: on_progress(30, "角色干音分片中...")
+            back_path, vocal_path = AudioPre.getInstance()._path_audio_(video_audio_path, output_path=result_dir)
+            back_audio, _ = sf.read(back_path)
+            target_voice_audio = np.zeros_like(back_audio)
+            role_subtitles, vocal_audio, _, role_audio_path = split_roles_audio(dubbing_subs, vocal_path,
+                                                                                output_path=result_dir)
+            if on_progress:
+                print("角色声音克隆中...")
+                on_progress(35, "角色声音克隆中...")
+            voice_ids = self.batch_clone_text(role_subtitles, role_audio_path, timestamp, voice_param)
+
+            if on_progress:
+                on_progress(40, "正在进行配音...")
+
+            voice_setting = {"stability": 0.8, "similarity_boost": 0.9, "style": 0.02, "use_speaker_boost": True,
+                             "speed": 1.0}
+            previous_dict = {}
+            role_set = set(role_match_list)
+            for role in role_set:
+                previous_dict[role] = []
+
+            length = len(dubbing_subs)
+            dubbing_subtitle_entitys = []
+            dubbing_subs_list = list(dubbing_subs.values())
+            for i, subtitle in enumerate(dubbing_subs.values()):
+                if on_progress:
+                    on_progress(min(40 + int((i * 56) / length), 100), "")
+
+                print(subtitle)
+                role = subtitle["role"]
+                start_str = subtitle["start"]
+                end_str = subtitle["end"]
+                text = subtitle["text"]
+                voice_id = voice_ids[role] if role in voice_ids else "JBFqnCBsd6RMkjVDRZzb"
+                if not voice_id or voice_id == "-1":
+                    continue
+
+                start = int((self.time_str_to_ms(start_str) * samplerate) / 1000)
+                end = int((self.time_str_to_ms(end_str) * samplerate) / 1000)
+                circle = True  # 是否进行循环
+                retry = 3
+                source_frames = end - start
+                res_audio = None
+                request_id = None
+                time_alignments = None
+
+                # language_code = "id",
+                while circle and retry > 0:
+                    audio = self.connect.elevenlabs.text_to_speech.with_raw_response.convert_with_timestamps(
+                        text=text,
+                        voice_id=voice_id,
+                        model_id="eleven_multilingual_v2",
+                        output_format="mp3_44100_192",
+                        voice_settings=voice_setting,
+                        previous_request_ids=previous_dict[role][-3:])
+
+                    request_id = audio._response.headers.get("request-id")
+
+                    time_alignments = audio.data.normalized_alignment
+                    audio_bytes = base64.b64decode(audio.data.audio_base_64)
+                    dub_audio = AudioSegment.from_file(io.BytesIO(audio_bytes))  # 读取配音音频段
+                    dub_audio = dub_audio.set_frame_rate(samplerate)
+                    res_audio = np.array(dub_audio.get_array_of_samples())
+                    res_audio = res_audio.astype(np.float64) / 32768.0
+                    res_audio = np.vstack([res_audio, res_audio]).T
+                    res_frames = res_audio.shape[0]
+
+                    if all_audio is None:  # all_audio用于记录所有生成的音频便于后续剪辑
+                        all_audio = np.copy(res_audio)
+                    else:
+                        empty_array = np.zeros((44100, 2), dtype=res_audio.dtype)  # 1s间隔
+                        all_audio = np.concatenate([all_audio, empty_array, res_audio])
+
+                    print("-音频长度(s):", res_frames / samplerate)
+                    print("-限定长度(s):", source_frames / samplerate)
+                    if res_frames - source_frames >= 60000 and (res_frames / source_frames) >= 1.8:  # 超出1.36s且超出1.8倍
+                        print("-超出长度1级: debug debug")
+                        circle = True
+                        retry -= 1
+                        if retry <= 0:
+                            print("-这句过于异常，取消配音")
+                            break
+                    else:
+                        circle = False
+
+                print("*时长判定结束")
+                if request_id: previous_dict[role].append(request_id)
+                speed = 1
+                res_audio, characters, time_seconds = self.trim_silence_with_time_alignments(res_audio, time_alignments, rate=0.2)
+                res_frames = res_audio.shape[0]
+                print("*去除首尾空音(s):", res_frames / samplerate)
+
+                # 这里tolerance需要调整，如果下一句的role也是我自己，则tolerance需要进行强制桥准，不能以7000为标准
+                # next_sub_index = i + 1
+                # next_start_offset = 7000
+                #
+                # if i + 1 < len(dubbing_subs_list):
+                #     next_sub = dubbing_subs_list[next_sub_index]
+                #     next_start_temp = int((self.time_str_to_ms(next_sub["start"]) * samplerate) / 1000)
+                #     off = next_start_temp - end
+                #     next_start_offset = max(off * 0.95, off - 4410)  # 不能完全贴在一起吧，要不0.1s，要不0.95，选最大的，同一人的连续说话
+                # else:
+                #     next_start_offset = back_audio.shape[0] - end
+                # up_tolerance = [min(7000, next_start_offset), next_start_offset]  # 0是判定阈值，1是底线
+                #
+                # if res_frames - source_frames > up_tolerance[0]:  # 超出太多，就应该加速，大概冗余0.16s
+                #     speed = res_frames / (source_frames + up_tolerance[0])
+                #     print("^时长超出太多，应该加速:", speed)
+                # elif source_frames - res_frames > 7000:
+                #     speed = (res_frames + 7000) / source_frames  # speed小于0，声音被拉长
+                #     print("^时长不够，应该减速:", speed)
+
+                speed = res_frames / source_frames
+                res_audio = self.adjust_speed2(res_audio, characters, time_seconds, source_frames, sr=samplerate, subtitle = subtitle, index=i, target_subtitles = target_subs, subtitle_indices = subtitle_indices)
+
+                # res_audio = self.adjust_speed(res_audio, speed, characters, time_seconds, source_frames, sr=samplerate,
+                #                               up_tolerance=up_tolerance)
+                print("!全部调整结束，音频时间(s)", res_audio.shape[0] / samplerate)
+                dubbing_duration = int((res_audio.shape[0] / samplerate) * 1000)
+                dubbing_subtitle_entitys.append(
+                    Subtitle(original_subtitle="", target_subtitle=subtitle["text"], start_time=start_str,
+                             end_time=end_str, role_name=role, dubbing_duration=dubbing_duration,
+                             voice_id=voice_id, api_id=1))
+                end2 = min(start + res_audio.shape[0], len(target_voice_audio))
+                target_voice_audio[start:end2] += res_audio[:end2 - start]
+                print("==**##&&==**##&&")
+
+            target_voice_audio = target_voice_audio * 2  # 增强目标人声音量
+            target_voice_audio = np.clip(target_voice_audio, -1.0, 1.0)
+
+            back_audio += target_voice_audio
+
+            output_audio_file = os.path.join(result_dir, "配音音频-人声+背景-{}.mp3".format(timestamp))
+            target_voice_audio_path = os.path.join(result_dir, "配音音频-纯人声-{}.mp3".format(timestamp))
+            target_initial_voice_audio_path = os.path.join(result_dir,
+                                                           "配音音频-纯人声无加速无对齐-{}.mp3".format(timestamp))
+            output_video_file = os.path.join(result_dir, "视频-配音-{}.mp4".format(timestamp))
+            target_subtitles_path = os.path.join(result_dir, "字幕-合并后的配音字幕.txt")
+            modified_subtitles_path = os.path.join(result_dir, "字幕-cps.txt")
+            modified_subtitles_path2 = os.path.join(result_dir, "字幕-cps+角色.txt")
+
+            print(output_audio_file)
+            print(output_video_file)
+            sf.write(output_audio_file, back_audio, samplerate)
+            sf.write(target_voice_audio_path, target_voice_audio, samplerate)
+            sf.write(target_initial_voice_audio_path, all_audio, samplerate)
+            self.merge_audio_video2(video_path, output_audio_file, output_video_file)
+            try:
+                with open(target_subtitles_path, "w", encoding="utf-8") as f:
+                    for i, subtitle in enumerate(dubbing_subs.values(), start=1):
+                        f.write(
+                            f"{str(i)}\n{subtitle['start']} --> {subtitle['end']}\n{subtitle['role']}:{subtitle['text']}\n\n")
+                if cps:
+                    with open(modified_subtitles_path, 'w', encoding='utf-8') as f:
+                        for subtitle in target_subs:
+                            f.write(
+                                f"{subtitle['index']}\n{subtitle['start']} --> {subtitle['end']}\n{subtitle['text']}\n\n")
+                    with open(modified_subtitles_path2, 'w', encoding='utf-8') as f:
+                        i = 0
+                        for subtitle in target_subs:
+                            f.write(
+                                f"{subtitle['index']}\n{subtitle['start']} --> {subtitle['end']}\n{role_match_list[i]}:{subtitle['text']}\n\n")
+                            i += 1
+            except Exception as e:
+                print(f"Error write subtitle: {e}")
+
+            if delete:
+                if "旁白" in voice_ids: voice_ids.pop("旁白")
+                for key, value in voice_ids.items():
+                    try:
+                        if value:
+                            self.connect.elevenlabs.voices.delete(voice_id=value, )
+                    except Exception as e:
+                        print(e, "删除该声音失败")
 
             return {"result_path": result_dir, "audio_file": output_audio_file, "video_file": output_video_file}
         except Exception as e:
