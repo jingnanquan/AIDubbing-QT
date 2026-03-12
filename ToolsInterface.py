@@ -79,7 +79,7 @@ class ToolsInterface(Ui_Tools, QFrame):
 
         self.clearbgmBox.setLayout(QVBoxLayout())
         self.clearbgmBox.layout().setContentsMargins(0,0,0,0)
-        self.clear_bgm_upload_area = FileUploadArea(label_text="视频文件", file_types=["*.mp4", "*.avi"])
+        self.clear_bgm_upload_area = FileUploadArea(label_text="视频/音频文件", file_types=["*.mp4", "*.avi", "*.mp3", "*.wav", ".MP3", ".WAV"])
         self.clearbgmBox.layout().addWidget(self.clear_bgm_upload_area)
         self.clearbgmBtn.clicked.connect(self._clear_bgm)
 

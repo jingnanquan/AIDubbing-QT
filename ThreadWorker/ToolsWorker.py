@@ -43,8 +43,15 @@ class ClearBGMWorker(QThread):
 
         for file_path in self.video_files:
             if os.path.isfile(file_path):
-                print(f"▶️ 正在处理视频: {file_path}")
+                if (not file_path.endswith((".mp4", ".avi"))) and file_path.endswith((".mp3", ".wav", ".MP3", ".WAV")):
 
+                    print(f"▶️ 正在处理音频: {file_path}")
+                    # audio, samplerate = sf.read(file_path)
+                    # assert isinstance(audio, np.ndarray)
+                    vocal_path = Separator.isolate(file_path, result_dir)
+                    continue
+
+                print(f"▶️ 正在处理视频: {file_path}")
                 video_audio, samplerate = get_audio_np_from_video(file_path)
                 assert isinstance(video_audio, np.ndarray)
 
