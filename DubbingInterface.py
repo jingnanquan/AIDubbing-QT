@@ -2,14 +2,15 @@ import logging
 
 from qfluentwidgets import RadioButton, LineEdit, BodyLabel, ComboBox
 
-from Compoment.DubbingParamWindows2 import spare_voices, prepared_voices, VoiceSelectorWindow
 from Compoment.FolderSelector import SingleFolderSelector
 from Config import ROLE_ANNO_FOLDER, RESULT_OUTPUT_FOLDER
 import sys
 import os
 import datetime
+from functools import lru_cache
+from importlib import import_module
 
-from PyQt5.QtCore import Qt, QPropertyAnimation, QPoint, QTimer, QThread, pyqtSignal
+from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import QWidget, QFileDialog, QFrame, QVBoxLayout, \
     QInputDialog, QMessageBox, QMenu, QApplication, QSizePolicy, QDialog, QFormLayout, QLabel, QButtonGroup, \
@@ -18,11 +19,16 @@ from PyQt5.QtWidgets import QWidget, QFileDialog, QFrame, QVBoxLayout, \
 from Compoment.DraggableTextEdit import DraggableTextEdit
 from Compoment.FileUploadArea import FileUploadArea
 from Compoment.PathDialog import PrettyPathDialog
-from Service.datasetUtils import datasetUtils
-from Service.generalUtils import time_str_to_ms, ms_to_time_str, mixed_sort_key, is_valid_cps
-from ThreadWorker.BatchDubbingWorker import BatchDubbingWorker
-from Service.subtitleUtils import parse_subtitle, parse_subtitle_uncertain
 from UI.Ui_dubbing import Ui_Dubbing
+
+
+@lru_cache(maxsize=None)
+def _load_module(path: str):
+    return import_module(path)
+
+
+def _get_attr(module_path: str, attr_name: str):
+    return getattr(_load_module(module_path), attr_name)
 
 
 class VoiceSelectorWidget(QFrame):
@@ -98,12 +104,32 @@ class VoiceSelectorWidget(QFrame):
     def set_voice_list(self, voice_list):
         """设置声音列表"""
         self.voice_list = voice_list
-        self.combo_box.clear()
-        if voice_list:
-            self.combo_box.addItems(voice_list)
+        # self.combo_box.clear()
+        # if voice_list:
+        #     self.combo_box.addItems(voice_list)
 
 
+class VoiceLoaderWorker(QThread):
+    voice_dict_loaded = pyqtSignal(dict, list)  # 成功时发射
 
+    # @pyqtSlot()
+    def run(self):
+        try:
+            datasetUtils = _get_attr("Service.datasetUtils", "datasetUtils")
+            voiceDict1 = datasetUtils.getInstance().query_voice_id(1)
+
+            voice_module = _load_module("Compoment.DubbingParamParams")
+            spare_voices = getattr(voice_module, "spare_voices")
+            prepared_voices = getattr(voice_module, "prepared_voices")
+
+            voiceDict2 = {key: [value, ""] for key, value in voiceDict1.items()}
+            voiceDict = spare_voices | voiceDict2 | prepared_voices
+            voiceNameList = list(voiceDict.keys())
+
+            self.voice_dict_loaded.emit(voiceDict, voiceNameList)
+        except Exception as exc:
+            logging.error(f"加载声音资源失败: {exc}")
+            self.voice_dict_loaded.emit({}, [])
 
 
 class DubbingInterface(Ui_Dubbing, QFrame):
@@ -111,8 +137,8 @@ class DubbingInterface(Ui_Dubbing, QFrame):
 
     def __init__(self, parent=None):
         super().__init__()
-        logging.warning("批量标注界面加载")
-        print("批量标注界面加载")
+        logging.warning("批量配音界面加载")
+        print("批量配音界面加载")
         self.setupUi(self)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.worker = None
@@ -120,17 +146,105 @@ class DubbingInterface(Ui_Dubbing, QFrame):
         self.voice_selector_widgets = []
         self.activate_sender = None
         self.voice_selector_window = None
+        self._voice_loader_thread = None
+        self._voice_loader_worker = None
         self.all_roles = []
 
-        voiceDict1 = datasetUtils.getInstance().query_voice_id(1)
-        voiceDict2 = {}
-        for key, value in voiceDict1.items():
-            voiceDict2[key] = [value, ""]  # 这里置为空
-        self.voiceDict = spare_voices | voiceDict2 | prepared_voices
-        self.voiceNameList = list(self.voiceDict.keys())
+        self.voiceDict = {}
+        self.voiceNameList = []
+        self.voice_resources_ready = False
+        self._load_voice_resources()
+        # QTimer.singleShot(0, self._load_voice_resources)
 
         # 初始化字幕滚动列表和角色列表
         self._setup_unfinished_ui()
+
+    # def _load_voice_resources(self):
+    #     datasetUtils = _get_attr("Service.datasetUtils", "datasetUtils")
+    #     voice_module = _load_module("Compoment.DubbingParamWindows2")
+    #     spare_voices = getattr(voice_module, "spare_voices")
+    #     prepared_voices = getattr(voice_module, "prepared_voices")
+    #     try:
+    #         voiceDict1 = datasetUtils.getInstance().query_voice_id(1)
+    #     except Exception as exc:
+    #         print(f"加载声音资源失败: {exc}")
+    #         return
+    #     voiceDict2 = {key: [value, ""] for key, value in voiceDict1.items()}
+    #     self.voiceDict = spare_voices | voiceDict2 | prepared_voices
+    #     self.voiceNameList = list(self.voiceDict.keys())
+    #     self.voice_resources_ready = True
+    #     for widget in self.voice_selector_widgets:
+    #         widget.set_voice_list(self.voiceNameList)
+    #         if self.voiceNameList and not widget.combo_box.text():
+    #             widget.combo_box.setText(self.voiceNameList[0])
+
+    # def _load_voice_resources(self):
+    #     # 防止重复加载
+    #     if hasattr(self, '_voice_loader_thread') and self._voice_loader_thread.isRunning():
+    #         return
+    #
+    #     # 创建线程和工作对象
+    #     self._voice_loader_worker = VoiceLoaderWorker()
+    #     self._voice_loader_worker.start()
+    #     # 连接信号
+    #     self._voice_loader_worker.voice_dict_loaded.connect(self._on_voice_dict_loaded)
+    #
+    # def _on_voice_dict_loaded(self, voiceDict: dict, voiceNameList: list):
+    #     # 以下代码在主线程执行（因为信号槽是 QueuedConnection）
+    #     # voice_module = _load_module("Compoment.DubbingParamWindows2")
+    #     # spare_voices = getattr(voice_module, "spare_voices")
+    #     # prepared_voices = getattr(voice_module, "prepared_voices")
+    #     #
+    #     # voiceDict2 = {key: [value, ""] for key, value in voiceDict1.items()}
+    #     # self.voiceDict = spare_voices | voiceDict2 | prepared_voices
+    #     # self.voiceNameList = list(self.voiceDict.keys())
+    #     self.voiceDict = voiceDict
+    #     self.voiceNameList = voiceNameList
+    #     self.voice_resources_ready = True
+    #
+    #     for widget in self.voice_selector_widgets:
+    #         widget.set_voice_list(self.voiceNameList)
+    #         if self.voiceNameList and not widget.combo_box.text():
+    #             widget.combo_box.setText(self.voiceNameList[0])
+    #
+    #     print("获取声音列表成功")
+    #     if self._voice_loader_worker:
+    #         self._voice_loader_worker.deleteLater()
+
+    def _load_voice_resources(self):
+        # 防止重复加载
+        if self.loading_msg:
+            return
+
+        # 创建线程和工作对象
+        self._voice_loader_worker = VoiceLoaderWorker()
+
+        self.loading_msg = QMessageBox(self)
+        self.loading_msg.setWindowTitle("请稍候")
+        self.loading_msg.setText("正在加载声音列表中，请稍候...")
+        self.loading_msg.setStandardButtons(QMessageBox.NoButton)
+        self.loading_msg.setModal(True)
+        self.loading_msg.show()
+        QApplication.processEvents()
+
+        self._voice_loader_worker.voice_dict_loaded.connect(self._on_voice_dict_loaded)
+
+        # 启动线程
+        self._voice_loader_worker.start()
+
+    def _on_voice_dict_loaded(self, voiceDict: dict, voiceNameList: list):
+        # 以下代码在主线程执行（因为信号槽是 QueuedConnection）
+        self.voiceDict = voiceDict
+        self.voiceNameList = voiceNameList
+        self.voice_resources_ready = True
+
+        for widget in self.voice_selector_widgets:
+            widget.set_voice_list(self.voiceNameList)
+            if self.voiceNameList and not widget.combo_box.text():
+                widget.combo_box.setText(self.voiceNameList[0])
+
+        self._on_general_finished()
+        print("获取声音列表成功")
 
     def _setup_unfinished_ui(self):
 
@@ -164,7 +278,6 @@ class DubbingInterface(Ui_Dubbing, QFrame):
         layout1.addWidget(BodyLabel("字幕语言:"))
         layout1.addWidget(self.sub_language_input)
         self.operate_container.layout().insertWidget(0, self.annotation_language_widget)
-
 
         self.font = QFont()
         self.font.setFamily("微软雅黑")
@@ -225,21 +338,46 @@ class DubbingInterface(Ui_Dubbing, QFrame):
         self.dubbingBtn.clicked.connect(self._on_dubbing_clicked)
         self.operate_container.setMinimumHeight(220)
 
+        self.PullVoiceBtn.clicked.connect(self.pull_eleven_voice)             # 拉取声音列表
+        self.DelVoiceBtn.clicked.connect(self.set_delete_voice_params)
+
+
+    def set_delete_voice_params(self):
+        DeleteVoiceParamsWindow = _get_attr("Compoment.DeleteVoiceParamsWindow", "DeleteVoiceParamsWindow")
+        self.params_window = DeleteVoiceParamsWindow()
+        self.params_window.setWindowModality(Qt.ApplicationModal)
+        self.params_window.closeEvent = lambda event: self.update_voice_dict()
+        self.params_window.show()  # 显示
+
+
+    def pull_eleven_voice(self):
+        reply = QMessageBox.question(
+            self,  # 父窗口
+            "拉取提示",  # 标题
+            "此操作将拉取并更新elevenlabs上克隆的语音!",  # 提示文本
+            QMessageBox.Yes | QMessageBox.Cancel,  # 按钮选项
+        )
+        PullVoiceWorker = _get_attr("ThreadWorker.SubtitleInterfaceWorker", "PullVoiceWorker")
+        if reply==QMessageBox.Yes:
+            print("开始拉取")
+            # # 是否根据角色提示列表进行标记
+            self.worker = PullVoiceWorker()
+            self.worker.finished.connect(self.pull_eleven_voice_finished)
+            self.worker.start()
 
     def _add_role_selector(self, role_name: str):
-        voice_selector_widget = VoiceSelectorWidget(role_name, self.voiceNameList[0])
+        default_voice = self.voiceNameList[0] if self.voiceNameList else ""
+        voice_selector_widget = VoiceSelectorWidget(role_name, default_voice)
+        if self.voiceNameList:
+            voice_selector_widget.set_voice_list(self.voiceNameList)
         voice_selector_widget.select_voice_signal.connect(self.select_voice)
         self.VoiceSelectorLayout.addWidget(voice_selector_widget)
         self.voice_selector_widgets.append(voice_selector_widget)
 
 
     def update_voice_dict(self):
-        voiceDict1 = datasetUtils.getInstance().query_voice_id(1)
-        voiceDict2 = {}
-        for key, value in voiceDict1.items():
-            voiceDict2[key] = [value, ""]  # 这里置为空
-        self.voiceDict = spare_voices | voiceDict2 | prepared_voices
-        self.voiceNameList = list(self.voiceDict.keys())
+        VoiceSelectorWindow = _get_attr("Compoment.DubbingConfigs", "VoiceSelectorWindow")
+        self._load_voice_resources()
 
         if self.voice_selector_window is not None and isinstance(self.voice_selector_window, VoiceSelectorWindow):
             window_pointer = self.voice_selector_window
@@ -251,6 +389,7 @@ class DubbingInterface(Ui_Dubbing, QFrame):
             window_pointer.deleteLater()
 
     def select_voice(self, flag:bool=True):
+        VoiceSelectorWindow = _get_attr("Compoment.DubbingConfigs", "VoiceSelectorWindow")
         self.activate_sender = self.sender()
         assert isinstance(self.activate_sender, VoiceSelectorWidget)
         print(self.activate_sender.objectName())
@@ -267,7 +406,8 @@ class DubbingInterface(Ui_Dubbing, QFrame):
 
     def _on_general_finished(self, result: dict=None):
         if isinstance(self.loading_msg, QMessageBox):
-            self.loading_msg.hide()
+            self.loading_msg.deleteLater()
+            self.loading_msg = None
         if self.worker:
             self.worker.deleteLater()
             self.worker = None
@@ -275,8 +415,18 @@ class DubbingInterface(Ui_Dubbing, QFrame):
             dlg = PrettyPathDialog("任务完成!", result["msg"], result["result_path"], parent=self)
             dlg.exec_()
 
+    def pull_eleven_voice_finished(self, msg):
+        # 从线上拉去的声音，已经存储在数据库，这里是为了更新本地的voiceDict
+        QMessageBox.information(self, "提示", msg)
+        self.update_voice_dict()
+
     def _on_extract_roles(self, file_paths: list):
+
+        print("解析字幕角色")
+        parse_subtitle_uncertain = _get_attr("Service.subtitleUtils", "parse_subtitle_uncertain")
+        mixed_sort_key = _get_attr("Service.generalUtils", "mixed_sort_key")
         """提取字幕中的角色"""
+
         if not file_paths:
             return
         self.loading_msg = QMessageBox(self)
@@ -310,6 +460,8 @@ class DubbingInterface(Ui_Dubbing, QFrame):
 
 
     def _on_dubbing_clicked(self):
+        is_valid_cps = _get_attr("Service.generalUtils", "is_valid_cps")
+        BatchDubbingWorker = _get_attr("ThreadWorker.BatchDubbingWorker", "BatchDubbingWorker")
 
         cps = self.cps_input.text()
         print(cps)

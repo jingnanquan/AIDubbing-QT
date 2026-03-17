@@ -57,13 +57,13 @@ class BatchDubbingWorker(QThread):
     def run(self):
         try:
             voice_count = self.get_voices_count()
-            # print(voice_count)
+            # print(voice_count)1
             print(self.voice_params)
             param_cloned_voice_count = sum(1 for param in self.voice_params.values() if param=="")   # 自动克隆为空
             # print(param_cloned_voice_count)
-            if voice_count + param_cloned_voice_count > 160:
+            if voice_count + param_cloned_voice_count > 660:
                 self.finished.emit({
-                    "msg": f"警告，此次配音需要克隆{param_cloned_voice_count}个声源，请删除已经克隆的声音，使其小于{160-param_cloned_voice_count}个",
+                    "msg": f"警告，此次配音需要克隆{param_cloned_voice_count}个声源，请删除已经克隆的声音，使其小于{660-param_cloned_voice_count}个",
                     "result_path": ""
                 })
                 return

@@ -11,7 +11,7 @@ import numpy as np
 import soundfile as sf
 from PyQt5.QtCore import QThread, pyqtSignal
 from Service.datasetUtils import datasetUtils
-from Service.dubbingMain.dubbingElevenLabs import dubbingElevenLabs
+
 from Service.generalUtils import time_str_to_ms, ms_to_time_str
 from Service.subtitleUtils import parse_subtitle_uncertain
 from Service.videoUtils import compress_video, get_audio_np_from_video, merge_audio_video2
@@ -48,7 +48,7 @@ class ClearBGMWorker(QThread):
                     print(f"▶️ 正在处理音频: {file_path}")
                     # audio, samplerate = sf.read(file_path)
                     # assert isinstance(audio, np.ndarray)
-                    vocal_path = Separator.isolate(file_path, result_dir)
+                    vocal_path, instrumental_path = Separator.isolate(file_path, result_dir)
                     continue
 
                 print(f"▶️ 正在处理视频: {file_path}")
@@ -56,17 +56,20 @@ class ClearBGMWorker(QThread):
                 assert isinstance(video_audio, np.ndarray)
 
 
-                output_filename = f"clearBGM_{os.path.splitext(os.path.basename(file_path))[0]}.mp4"
-                output_path = os.path.join(result_dir, output_filename)
+                output_filename1 = f"clearBGM_{os.path.splitext(os.path.basename(file_path))[0]}_1.mp4"
+                output_filename2 = f"clearBGM_{os.path.splitext(os.path.basename(file_path))[0]}_2.mp4"
+                output_path1 = os.path.join(result_dir, output_filename1)
+                output_path2 = os.path.join(result_dir, output_filename2)
                 video_audio_path = os.path.join(result_dir, f"原音频_{os.path.splitext(os.path.basename(file_path))[0]}.mp3")
                 sf.write(video_audio_path, video_audio, samplerate)
 
                 try:
                     print(video_audio_path)
-                    vocal_path = Separator.isolate(video_audio_path, result_dir)
-                    merge_audio_video2(file_path, vocal_path, output_path)
+                    vocal_path, instrumental_path = Separator.isolate(video_audio_path, result_dir)
+                    merge_audio_video2(file_path, vocal_path, output_path1)
+                    merge_audio_video2(file_path, instrumental_path, output_path2)
 
-                    print(f"✅ 已保存清除视频: {output_path}")
+                    print(f"✅ 已保存清除视频: {output_path1}")
                 except Exception as e:
                     print(f"❌ 处理 {file_path} 出错: {e}")
                     error_files.append(file_path)
@@ -480,6 +483,7 @@ class CloneVoiceWorker(QThread):
         self.voice_files = voice_files
 
     def run(self):
+        from Service.dubbingMain.dubbingElevenLabs import dubbingElevenLabs
         print("enter: 语音克隆")
         timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
         error_files = []

@@ -1,7 +1,7 @@
 import os
 from typing import Any
 
-from Service.dubbingMain.llmAPI import LLMAPI
+
 from Service.generalUtils import time_str_to_ms
 
 
@@ -152,6 +152,7 @@ def adjust_subtitles_cps(target_subs, cps: int, tolerate_factor: list):
 
     print("cps校验：", adjust_list, max_char_lens, adjust_indices)
     # 调用 LLM API 进行字幕压缩
+    from Service.dubbingMain.llmAPI import LLMAPI
 
     if adjust_list:
         compressed_texts = LLMAPI.getInstance().compress_subtitles(adjust_list, max_char_lens)

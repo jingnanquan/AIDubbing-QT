@@ -1,26 +1,26 @@
 import copy
+import os
 import sys
+from functools import lru_cache
+from importlib import import_module
 
 from PyQt5.QtCore import Qt, QPropertyAnimation, QPoint, QTimer
 from PyQt5.QtGui import QStandardItemModel, QStandardItem
 from PyQt5.QtWidgets import QWidget, QFileDialog, QFrame, QVBoxLayout, \
     QInputDialog, QMessageBox, QMenu, QApplication, QSizePolicy
-import os
-
-from Compoment.DeleteVoiceParamsWindow import DeleteVoiceParamsWindow
-from Compoment.DubbingParamWindows import CosyDubbingParamsWindow, DubbingParamsWindow, DirectedDubbingParamsWindow
-from Compoment.DubbingParamWindows2 import ElevenDubbingParamsWindow2
-from Compoment.ExtractRolesParamWindows import ExtractRolesParamsWindow
 
 from Compoment.SubtitleListItem import SubtitleListItem
-from Service.videoUtils import is_video_file
-from ThreadWorker.SubtitleInterfaceWorker import ExportRolesWorker
-from Compoment.VideoPlayWidget import VideoPlayerWidget
-from Compoment.VoiceChangerParamWindows import VoiceChangerParamsWindow
-from Service.generalUtils import time_str_to_ms
 from UI.Ui_subtitle2 import Ui_Subtitle
-from Service.subtitleUtils import is_srt_file, get_srt_files_in_folder, parse_subtitle_uncertain
 from Config import env
+
+
+@lru_cache(maxsize=None)
+def _load_module(path: str):
+    return import_module(path)
+
+
+def _get_attr(module_path: str, attr_name: str):
+    return getattr(_load_module(module_path), attr_name)
 
 
 
@@ -85,12 +85,13 @@ class SubtitleInterface(Ui_Subtitle, QFrame):
                 self.SubListWidget.addItem(os.path.basename(self.subtitlePaths[3]))
                 self.import_role_list(os.path.join(self.now_path,"1-中-角色表-固定.txt"))
 
-                QTimer.singleShot(1000, lambda: self.select_video_file(os.path.join(self.now_path, "a视频_test.mp4")))
+                # QTimer.singleShot(1000, lambda: self.select_video_file(os.path.join(self.now_path, "a视频_test.mp4")))
         except Exception as e:
             pass
 
     def _init_video_player(self):
         # 初始化视频播放器
+        VideoPlayerWidget = _get_attr("Compoment.VideoPlayWidget", "VideoPlayerWidget")
         self.CustomVideoWidget.setLayout(QVBoxLayout())
         self.CustomVideoWidget.layout().setContentsMargins(0, 0, 0, 0)
         self.CustomVideoWidget.layout().setSizeConstraint(QVBoxLayout.SetDefaultConstraint)
@@ -102,6 +103,10 @@ class SubtitleInterface(Ui_Subtitle, QFrame):
 
 
     def set_video_voice_changer_params(self):
+        VoiceChangerParamsWindow = _get_attr("Compoment.VoiceChangerParamWindows", "VoiceChangerParamsWindow")
+
+
+        time_str_to_ms = _get_attr("Service.generalUtils", "time_str_to_ms")
         print(self.subtitlePaths, self.video_file)
         if not self.subtitlePaths or not self.video_file:
             QMessageBox.information(self, "提示", "请先导入字幕和视频！")
@@ -125,6 +130,8 @@ class SubtitleInterface(Ui_Subtitle, QFrame):
         self.params_window.show()  # 显示
 
     def set_cosy_dubbing_params(self):
+        CosyDubbingParamsWindow = _get_attr("Compoment.DubbingParamWindows", "CosyDubbingParamsWindow")
+        time_str_to_ms = _get_attr("Service.generalUtils", "time_str_to_ms")
         print(self.subtitlePaths, self.video_file)
         if not self.subtitlePaths or not self.video_file:
             QMessageBox.information(self, "提示", "请先导入字幕和视频！")
@@ -148,6 +155,8 @@ class SubtitleInterface(Ui_Subtitle, QFrame):
         self.params_window.show()  # 显示
 
     def set_dubbing_params(self):
+        DubbingParamsWindow = _get_attr("Compoment.DubbingParamWindows", "DubbingParamsWindow")
+        time_str_to_ms = _get_attr("Service.generalUtils", "time_str_to_ms")
         print(self.subtitlePaths, self.video_file)
         if not self.subtitlePaths or not self.video_file:
             QMessageBox.information(self, "提示", "请先导入字幕和视频！")
@@ -172,6 +181,8 @@ class SubtitleInterface(Ui_Subtitle, QFrame):
         self.params_window.show()  # 显示
 
     def set_directed_dubbing_params(self):
+        DirectedDubbingParamsWindow = _get_attr("Compoment.DubbingParamWindows", "DirectedDubbingParamsWindow")
+        time_str_to_ms = _get_attr("Service.generalUtils", "time_str_to_ms")
         print(self.subtitlePaths, self.video_file)
         if not self.subtitlePaths or not self.video_file:
             QMessageBox.information(self, "提示", "请先导入字幕和视频！")
@@ -195,6 +206,8 @@ class SubtitleInterface(Ui_Subtitle, QFrame):
         self.params_window.show()  # 显示
 
     def set_extract_params(self):
+        ExtractRolesParamsWindow = _get_attr("Compoment.ExtractRolesParamWindows", "ExtractRolesParamsWindow")
+        time_str_to_ms = _get_attr("Service.generalUtils", "time_str_to_ms")
         print(self.subtitlePaths, self.video_file)
         if not self.subtitlePaths or not self.video_file:
             QMessageBox.information(self, "提示", "请先导入字幕和视频！")
@@ -219,6 +232,8 @@ class SubtitleInterface(Ui_Subtitle, QFrame):
         self.params_window.show()  # 显示
 
     def set_eleven_dubbing_params2(self):
+        ElevenDubbingParamsWindow2 = _get_attr("Compoment.DubbingParamWindows2", "ElevenDubbingParamsWindow2")
+        time_str_to_ms = _get_attr("Service.generalUtils", "time_str_to_ms")
         print(self.subtitlePaths, self.video_file)
         if not self.subtitlePaths or not self.video_file:
             QMessageBox.information(self, "提示", "请先导入字幕和视频！")
@@ -241,6 +256,7 @@ class SubtitleInterface(Ui_Subtitle, QFrame):
         self.params_window.show()  # 显示
 
     def set_delete_voice_params(self):
+        DeleteVoiceParamsWindow = _get_attr("Compoment.DeleteVoiceParamsWindow", "DeleteVoiceParamsWindow")
         self.params_window = DeleteVoiceParamsWindow()
         self.params_window.setWindowModality(Qt.ApplicationModal)
         self.params_window.show()  # 显示
@@ -310,6 +326,7 @@ class SubtitleInterface(Ui_Subtitle, QFrame):
             print(self.subtitlePaths)
 
     def show_subtitle_list(self, item):
+        parse_subtitle_uncertain = _get_attr("Service.subtitleUtils", "parse_subtitle_uncertain")
         # 获取被点击项的行号（从 0 开始）
         row = self.SubListWidget.row(item)
         print(f"点击了第 {row} 行，内容: {item.text()}")
@@ -349,6 +366,7 @@ class SubtitleInterface(Ui_Subtitle, QFrame):
 
 
     def _update_SubScroll(self, msec: list):
+        time_str_to_ms = _get_attr("Service.generalUtils", "time_str_to_ms")
         if self.subtitles:
             index = 0
             items = self.findChildren(SubtitleListItem)
@@ -436,6 +454,7 @@ class SubtitleInterface(Ui_Subtitle, QFrame):
             QMessageBox.warning(self, "警告", "角色表错误！")
 
     def export_role_list(self):
+        ExportRolesWorker = _get_attr("ThreadWorker.SubtitleInterfaceWorker", "ExportRolesWorker")
         items = self.findChildren(SubtitleListItem)
         if not items:
             QMessageBox.information(self, "提示", "请先标注并校验角色！")
@@ -477,6 +496,7 @@ class SubtitleInterface(Ui_Subtitle, QFrame):
 
 
     def dragEnterEvent(self, event):
+        is_video_file = _get_attr("Service.videoUtils", "is_video_file")
         super().dragEnterEvent(event)
         if event.mimeData().hasUrls():
             decide_url = event.mimeData().urls()[0].toLocalFile()
@@ -500,6 +520,10 @@ class SubtitleInterface(Ui_Subtitle, QFrame):
         self.CustomVideoWidget.setStyleSheet("""#CustomVideoWidget{border: 1px solid #ccc;}""")
 
     def dropEvent(self, event):
+        utils = _load_module("Service.subtitleUtils")
+        get_srt_files_in_folder = getattr(utils, "get_srt_files_in_folder")
+        is_srt_file = getattr(utils, "is_srt_file")
+        is_video_file = _get_attr("Service.videoUtils", "is_video_file")
         super().dropEvent(event)
         pos = event.pos()
         self.SubListBox.setStyleSheet("""#SubListBox{border: 1px solid #ccc;}""")
@@ -533,7 +557,7 @@ class SubtitleInterface(Ui_Subtitle, QFrame):
 
 
     def pull_eleven_voice(self):
-        from ThreadWorker.SubtitleInterfaceWorker import PullVoiceWorker
+        PullVoiceWorker = _get_attr("ThreadWorker.SubtitleInterfaceWorker", "PullVoiceWorker")
         reply = QMessageBox.question(
             self,  # 父窗口
             "拉取提示",  # 标题

@@ -3,10 +3,10 @@ import re
 import json
 import time
 
-import vertexai
+# import vertexai
 from google.auth.credentials import with_scopes_if_required
 from google.genai.types import HttpOptions
-from vertexai.generative_models import GenerativeModel
+# from vertexai.generative_models import GenerativeModel
 
 from Service.ccTest import API_KEY_DEEPSEEK, API_G
 from Service.generalUtils import calculate_time

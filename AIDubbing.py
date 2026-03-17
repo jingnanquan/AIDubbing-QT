@@ -1,4 +1,5 @@
-from LoginPage import run2
+from LoginPage import launch_login
+import sys
 
 if __name__ == '__main__':
-    run2()
+    sys.exit(launch_login())

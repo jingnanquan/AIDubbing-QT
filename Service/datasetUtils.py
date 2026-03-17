@@ -1,6 +1,5 @@
 import os
 import dataset
-from sqlalchemy import text
 
 from Service.generalUtils import calculate_time
 

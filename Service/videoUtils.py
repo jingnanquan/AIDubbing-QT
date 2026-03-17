@@ -1,4 +1,3 @@
-import io
 
 import ffmpeg
 import numpy as np

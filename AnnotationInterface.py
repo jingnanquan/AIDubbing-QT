@@ -8,6 +8,8 @@ import re
 import datetime
 import traceback
 from concurrent.futures import ThreadPoolExecutor
+from functools import lru_cache
+from importlib import import_module
 
 from PyQt5.QtCore import Qt, QPropertyAnimation, QPoint, QTimer, QThread, pyqtSignal
 from PyQt5.QtGui import QFont
@@ -18,14 +20,16 @@ from PyQt5.QtWidgets import QWidget, QFileDialog, QFrame, QVBoxLayout, \
 from Compoment.DraggableTextEdit import DraggableTextEdit
 from Compoment.FileUploadArea import FileUploadArea
 from Compoment.PathDialog import PrettyPathDialog
-from Service.generalUtils import time_str_to_ms, ms_to_time_str
-from Service.videoUtils import _probe_video_duration_ms
-# from ThreadWorker.AnnotationAudioFeatureWorker import BatchAnnotationWorker_with_AudioFeature
-from ThreadWorker.AnnotationExperiment import BatchAnnotationWorker_with_AudioFeature, \
-    BatchAnnotationWorker_with_AudioFeature_no_split
 from UI.Ui_annotation import Ui_Annotation
-# from Service.dubbingMain.llmAPI import LLMAPI
-from Service.subtitleUtils import parse_subtitle
+
+
+@lru_cache(maxsize=None)
+def _load_module(path: str):
+    return import_module(path)
+
+
+def _get_attr(module_path: str, attr_name: str):
+    return getattr(_load_module(module_path), attr_name)
 
 
 
@@ -183,9 +187,27 @@ class AnnotationInterface(Ui_Annotation, QFrame):
         if self.annotation_option == 0:
             self.worker = BatchAnnotationWorker(pairs, role_info, output_root, self.extraOutputBtn.isChecked())
         elif self.annotation_option == 1:
-            self.worker = BatchAnnotationWorker_with_AudioFeature(pairs, role_info, output_root, self.extraOutputBtn.isChecked(), if_translate=self.language_input.text() != self.sub_language_input.text(), language= self.language_input.text())
+            annotation_module = _load_module("ThreadWorker.AnnotationExperiment")
+            WorkerCls = getattr(annotation_module, "BatchAnnotationWorker_with_AudioFeature")
+            self.worker = WorkerCls(
+                pairs,
+                role_info,
+                output_root,
+                self.extraOutputBtn.isChecked(),
+                if_translate=self.language_input.text() != self.sub_language_input.text(),
+                language=self.language_input.text()
+            )
         elif self.annotation_option == 2:
-            self.worker = BatchAnnotationWorker_with_AudioFeature_no_split(pairs, role_info, output_root, self.extraOutputBtn.isChecked(), if_translate=self.language_input.text() != self.sub_language_input.text(), language=self.language_input.text())
+            annotation_module = _load_module("ThreadWorker.AnnotationExperiment")
+            WorkerCls = getattr(annotation_module, "BatchAnnotationWorker_with_AudioFeature_no_split")
+            self.worker = WorkerCls(
+                pairs,
+                role_info,
+                output_root,
+                self.extraOutputBtn.isChecked(),
+                if_translate=self.language_input.text() != self.sub_language_input.text(),
+                language=self.language_input.text()
+            )
 
         # self.worker = BatchAnnotationWorker_with_AudioFeature(pairs, role_info, output_root, self.extraOutputBtn.isChecked(), if_translate=self.annotation_option == 2)
         self.worker.progress.connect(self._on_progress)
@@ -215,6 +237,12 @@ class BatchAnnotationWorker(QThread):
         self.extraOutput = extraOutput
 
     def run(self):
+        general_utils = _load_module("Service.generalUtils")
+        time_str_to_ms = getattr(general_utils, "time_str_to_ms")
+        ms_to_time_str = getattr(general_utils, "ms_to_time_str")
+        video_utils = _load_module("Service.videoUtils")
+        _probe_video_duration_ms = getattr(video_utils, "_probe_video_duration_ms")
+        parse_subtitle = _get_attr("Service.subtitleUtils", "parse_subtitle")
         try:
             os.makedirs(self.output_root_dir, exist_ok=True)
             self.summary_dir = os.path.join(self.output_root_dir, "剧情简介")

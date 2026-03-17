@@ -5,7 +5,6 @@ import tempfile
 import shutil
 
 from PyQt5.QtCore import QThread, pyqtSignal
-from openpyxl.styles.builtins import output
 
 from Service.generalUtils import time_str_to_ms, ms_to_time_str
 from Service.subtitleUtils import parse_subtitle_uncertain

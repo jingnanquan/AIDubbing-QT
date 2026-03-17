@@ -1,15 +1,24 @@
 import sys
-import cv2
 
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QPixmap, QImage
 from PyQt5.QtWidgets import QWidget, QFrame, QVBoxLayout, QMessageBox, QApplication, QLabel, QPushButton, QScrollArea, QGridLayout
 import os
+from functools import lru_cache
+from importlib import import_module
 
-from ProjectCompoment.dubbingDatasetUtils import dubbingDatasetUtils
 from UI.Ui_project import Ui_Project
 
 card_width = 240
+
+
+@lru_cache(maxsize=None)
+def _load_module(path: str):
+    return import_module(path)
+
+
+def _get_attr(module_path: str, attr_name: str):
+    return getattr(_load_module(module_path), attr_name)
 
 
 
@@ -53,6 +62,7 @@ class ProjectInterface(QFrame, Ui_Project):
         QTimer.singleShot(0, lambda: self.refresh())
 
     def refresh(self):
+        dubbingDatasetUtils = _get_attr("ProjectCompoment.dubbingDatasetUtils", "dubbingDatasetUtils")
         self.projects = dubbingDatasetUtils.getInstance().get_all_projects()
         print("刷新显示项目卡片")
         self.projects.reverse()
@@ -178,6 +188,7 @@ class ProjectCard(QFrame):
 
 def get_first_pixmap(video_url: str):
     """获取视频的第一帧图片"""
+    cv2 = _load_module("cv2")
     cap = cv2.VideoCapture(video_url)
     
     if not cap.isOpened():

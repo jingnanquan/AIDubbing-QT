@@ -329,10 +329,9 @@ class dubbingElevenLabs3(dubbingInterface):
             if on_progress:
                 on_progress(40, "正在进行配音...")
 
-            voice_setting = {"stability": 0.9, "similarity_boost": 0.75, "style": 0, "use_speaker_boost": True, "speed": 1.0}
+            voice_setting = {"stability": 0.8, "similarity_boost": 0.9, "style": 0, "use_speaker_boost": True,
+                             "speed": 1.0}
             previous_dict = {}
-            previous_role = "Null"
-
             role_set = set(role_match_list)
             for role in role_set:
                 previous_dict[role] = []
@@ -346,10 +345,6 @@ class dubbingElevenLabs3(dubbingInterface):
 
                 print(subtitle)
                 role = subtitle["role"]
-                if role != previous_role:
-                    for key in previous_dict.keys():
-                        previous_dict[key]= []
-                previous_role = role
                 start_str = subtitle["start"]
                 end_str = subtitle["end"]
                 text = subtitle["text"]
@@ -372,11 +367,9 @@ class dubbingElevenLabs3(dubbingInterface):
                         text=text,
                         voice_id=voice_id,
                         model_id="eleven_multilingual_v2",
-                        # model_id="eleven_v3",
-                        output_format="mp3_44100_192",
-                        voice_settings=voice_setting,
-                        previous_request_ids=previous_dict[role][-1:]
-                    )
+                        output_format="mp3_44100_192",)
+                        # voice_settings=voice_setting,
+                        # previous_request_ids=previous_dict[role][-3:])
 
                     request_id = audio._response.headers.get("request-id")
 
@@ -570,7 +563,7 @@ class dubbingElevenLabs3(dubbingInterface):
         return estimated_duration_ms / 1000.0
 
     def clone_text(self, key: str, audio_path: str, timestamp: str):
-        MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024  # 8 MB
+        MAX_FILE_SIZE_BYTES = 8 * 1024 * 1024  # 8 MB
         # --- 新增：检查并裁剪文件 ---
         file_size = os.path.getsize(audio_path)
         if file_size > MAX_FILE_SIZE_BYTES:
@@ -674,18 +667,16 @@ class dubbingElevenLabs3(dubbingInterface):
 
 if __name__ == '__main__':
     eleven = dubbingElevenLabs3.getInstance()
-
-    print(eleven.connect.elevenlabs.models.list())
     # eleven.connect.elevenlabs.voices.delete(voice_id="-1")
-    # audio = eleven.connect.elevenlabs.text_to_speech.with_raw_response.convert_with_timestamps(
-    #     text="这是一个非常奇怪的句子！——~~~，iwant to know if any chars can be record, even the * & word is wrongr。。。.. 😅 ✅ ś(❁´◡`❁)  \n สวัสดี ขอบคุณ  sa-wat-dii Teşekkür ederim.  Привет Cześć Спасибо.  شكرا   啊啊 مرحبا",
-    #     voice_id="JBFqnCBsd6RMkjVDRZzb",
-    #     model_id="eleven_multilingual_v2",
-    #     output_format="mp3_44100_128",
-    # )
-    # request_id = audio._response.headers.get("request-id")
-    # data = audio.data
-    # time_alignments = audio.data.normalized_alignment
-    #
-    # from elevenlabs import play
-    # play(base64.b64decode(audio.data.audio_base_64))
+    audio = eleven.connect.elevenlabs.text_to_speech.with_raw_response.convert_with_timestamps(
+        text="这是一个非常奇怪的句子！——~~~，iwant to know if any chars can be record, even the * & word is wrongr。。。.. 😅 ✅ ś(❁´◡`❁)  \n สวัสดี ขอบคุณ  sa-wat-dii Teşekkür ederim.  Привет Cześć Спасибо.  شكرا   啊啊 مرحبا",
+        voice_id="JBFqnCBsd6RMkjVDRZzb",
+        model_id="eleven_multilingual_v2",
+        output_format="mp3_44100_128",
+    )
+    request_id = audio._response.headers.get("request-id")
+    data = audio.data
+    time_alignments = audio.data.normalized_alignment
+
+    from elevenlabs import play
+    play(base64.b64decode(audio.data.audio_base_64))

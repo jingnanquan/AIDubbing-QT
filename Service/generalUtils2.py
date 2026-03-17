@@ -6,6 +6,8 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 import os
 import base64
 
+from Service.ccTest import API_G
+
 
 def encrypt_string(plaintext, password):
     """
@@ -82,12 +84,14 @@ def decrypt_string(encrypted_data_b64, password):
 
 # 使用示例
 if __name__ == "__main__":
-    original_string = "你好，这是一个测试字符串。"
-    password = "qq"
+    # original_string = "你好，这是一个测试字符串。"
+    password = "AIDubbing"
+    #
+    # # 加密
+    # encrypted_b64 = encrypt_string(original_string, password)
+    # print(f"加密后的Base64字符串: {encrypted_b64}")
 
-    # 加密
-    encrypted_b64 = encrypt_string(original_string, password)
-    print(f"加密后的Base64字符串: {encrypted_b64}")
+    encrypted_b64 = API_G
 
     # 解密
     try:

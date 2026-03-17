@@ -369,7 +369,7 @@ class dubbingInterface:
         input_frames = input_audio.shape[0]
         global_speed = input_frames / target_frames
         # 我希望加速倍数在1.1以内并且绝对值不超过12000 大概0.28s
-        if global_speed>=0.96 and global_speed<=1.1:
+        if global_speed>0.96 and global_speed<1.1:
             res_audio = audio_speed(input_audio, global_speed)
             return res_audio
         else:
@@ -418,11 +418,7 @@ class dubbingInterface:
                 start, end = find_substring_position(string, sub["text"])
                 if start == -1 and end == -1:
                     logging.warning(f"字幕 {sub['text']} 未在文本中找到匹配项")
-                    global_speed = min(global_speed, 1.16)
-                    global_speed = max(global_speed, 0.95)
-                    print("global_speed:", global_speed)
-                    res_audio = audio_speed(input_audio, global_speed)
-                    return res_audio
+                    continue
 
                 # 这边的方案，是如果>1, 就是加速，我是希望加速因子小于本身的global_speed
                 '''
@@ -443,8 +439,10 @@ class dubbingInterface:
                 start = time_seconds[start]*sr
                 end = time_seconds[end+1]*sr
                 section_audio = input_audio[int(start): int(end)+1]
-                # print(start, end)
+                if int(end)+4410 <input_audio.shape[1]:
+                    section_audio = input_audio[int(start): int(end) + 4410]
 
+                # print(start, end)
                 align_start = int((time_str_to_ms(sub["start"])*sr)/1000)-offset_times  # 270465
                 align_end = int((time_str_to_ms(sub["end"])*sr)/1000)+1-offset_times  # 314565
                 speed = section_audio.shape[0] / (align_end - align_start)
@@ -454,17 +452,17 @@ class dubbingInterface:
 
                 # 调整speed和start
                 if speed<1:
-                    speed = max(speed, 0.95)
+                    speed = max(speed, 0.94)
                 elif speed > 1.15:
-                    align_start = min(int((align_start+pointer)/2), pointer+5000)
+                    align_start = int((align_start+pointer)/2)
                     speed = section_audio.shape[0] / (align_end - align_start)
                     if speed <=1.15:
-                        speed = max(speed, 1)
+                        speed = max(speed, 0.96)
                     else:
                         next_end = (int((time_str_to_ms(split_subtitles[index+1]["start"])*sr)/1000)+1-offset_times) if index+1 < len(split_subtitles) else align_end
                         align_end = int((align_end+next_end)/2)
                         speed = section_audio.shape[0] / (align_end - align_start)
-                        speed = max(speed, 1.05)
+                        speed = max(speed, 0.96)
 
                 align_audio = audio_speed(section_audio, speed)
                 # print(align_audio.shape)

@@ -1,4 +1,4 @@
-from PyQt5.QtCore import Qt, QThread
+from PyQt5.QtCore import Qt, QThread, QTimer
 from PyQt5.QtGui import QBrush, QColor
 from PyQt5.QtWidgets import QWidget, QFileDialog, QFrame, QVBoxLayout, \
     QSizePolicy, QLabel
@@ -9,9 +9,18 @@ from qfluentwidgets import Dialog, StrongBodyLabel
 from Compoment.HiddenScrollArea import HiddenScrollArea
 from Compoment.HistoryCard import HistoryCardItem
 from Compoment.PathDialog import PrettyPathDialog
-from Service.datasetUtils import datasetUtils
-from ThreadWorker.VoiceChangerWorker import VoiceChangerWorker
 from UI.Ui_voiceChanger2 import Ui_VoiceChanger
+from functools import lru_cache
+from importlib import import_module
+
+
+@lru_cache(maxsize=None)
+def _load_module(path: str):
+    return import_module(path)
+
+
+def _get_attr(module_path: str, attr_name: str):
+    return getattr(_load_module(module_path), attr_name)
 
 
 class VoiceChangerInterface(Ui_VoiceChanger, QFrame):
@@ -44,9 +53,11 @@ class VoiceChangerInterface(Ui_VoiceChanger, QFrame):
         self.similaritySlider.setProperty("value", 70)
         self.exaggerationSlider.setProperty("value", 0)
         # 参数和生成按钮设置
-        self.voiceDict = datasetUtils.getInstance().query_voice_id(1)  # 查询所有的声音列表
-        for name in self.voiceDict.keys():
-            self.voiceSelector.addItem(name)
+        self.voiceDict = {}
+        self.voiceSelector.clear()
+        self.voiceSelector.addItem("加载中...")
+        self.voiceSelector.setEnabled(False)
+        QTimer.singleShot(0, self._hydrate_voice_selector)
         self.AIModelSet = ['eleven_multilingual_sts_v2']
         for model in self.AIModelSet:
             self.modelSelector.addItem(model)
@@ -57,6 +68,22 @@ class VoiceChangerInterface(Ui_VoiceChanger, QFrame):
         self.dirs = []
         self.tabWidget.currentChanged.connect(self.on_tab_changed)
         self.setup_unfinished_ui()
+
+    def _hydrate_voice_selector(self):
+        datasetUtils = _get_attr("Service.datasetUtils", "datasetUtils")
+        try:
+            voice_dict = datasetUtils.getInstance().query_voice_id(1)
+        except Exception as exc:
+            print(f"加载声音列表失败: {exc}")
+            self.voiceSelector.clear()
+            self.voiceSelector.addItem("加载失败")
+            self.voiceSelector.setEnabled(True)
+            return
+        self.voiceDict = voice_dict or {}
+        self.voiceSelector.clear()
+        for name in self.voiceDict.keys():
+            self.voiceSelector.addItem(name)
+        self.voiceSelector.setEnabled(True)
 
     def reset_slider(self):
         self.stabilitySlider.setProperty("value", 50)
@@ -83,6 +110,7 @@ class VoiceChangerInterface(Ui_VoiceChanger, QFrame):
 
     # 增量更新，类比于vue的diff虚拟dom
     def incremental_update_scroll_conetnt(self):
+        datasetUtils = _get_attr("Service.datasetUtils", "datasetUtils")
         dirs = datasetUtils.getInstance().query_changer_audio_dir()
         for dir in dirs:
             if dir not in self.dirs:
@@ -118,16 +146,25 @@ class VoiceChangerInterface(Ui_VoiceChanger, QFrame):
 
 
     def generate_voice(self):
+        VoiceChangerWorker = _get_attr("ThreadWorker.VoiceChangerWorker", "VoiceChangerWorker")
         voice_id =  self.voiceLineEdit.text()
         if not self.pathScroll.voice_paths:
             w = Dialog("警告", "请上传音频文件", self)
             w.exec()
             return
-        if not voice_id and not self.voiceSelector.currentText():
+        get_text = self.voiceSelector.text if hasattr(self.voiceSelector, "text") else self.voiceSelector.currentText
+        selector_voice = get_text()
+        if not voice_id and not selector_voice:
             w = Dialog("警告", "请选择声音或输入声音ID", self)
             w.exec()
             return
-        params = {"voice_files": self.pathScroll.voice_paths, "voice_id": voice_id if voice_id else self.voiceDict[self.voiceSelector.text()],
+        if not voice_id:
+            if not self.voiceDict or selector_voice not in self.voiceDict:
+                w = Dialog("警告", "声音列表尚未加载完成", self)
+                w.exec()
+                return
+        resolved_voice_id = voice_id if voice_id else self.voiceDict[selector_voice]
+        params = {"voice_files": self.pathScroll.voice_paths, "voice_id": resolved_voice_id,
                   "model_id": self.modelSelector.text(), "stability": self.stabilitySlider.value() / 100, "similarity": self.similaritySlider.value() / 100,
                   "exaggeration": self.exaggerationSlider.value() / 100,
                   "remove_background_noise": self.removeBgNoiseCheck.isChecked(),

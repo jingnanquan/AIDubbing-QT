@@ -4,9 +4,6 @@ import os
 import librosa
 import numpy as np
 import soundfile as sf
-from pedalboard import Pedalboard
-from torchaudio.transforms import TimeStretch
-
 from Config import AUDIO_SEPARATION_FOLDER
 from Service.generalUtils import time_str_to_ms
 
@@ -55,35 +52,20 @@ def audio_speed(audio: np.ndarray, speed: float) -> np.ndarray:
     :return: 改变速度后的音频数组
     """
     # 计算新的音频长度
-    if speed==1:
-        return audio
     if audio.shape[1] == 2:
         res_audio_mono = audio[:, 0]  # 取单声道
         original_rms = librosa.feature.rms(y=res_audio_mono)[0].mean()
         res_audio_stretched = librosa.effects.time_stretch(res_audio_mono, rate=speed)
-        # res_audio_stretched = res_audio_stretched * (
-        #         original_rms / (librosa.feature.rms(y=res_audio_stretched)[0].mean() + 1e-6))  # 恢复到原音量
+        res_audio_stretched = res_audio_stretched * (
+                original_rms / (librosa.feature.rms(y=res_audio_stretched)[0].mean() + 1e-6))  # 恢复到原音量
         res_audio_stretched = np.vstack([res_audio_stretched, res_audio_stretched]).T
         res_audio = res_audio_stretched
     else:
         res_audio_mono = audio
         original_rms = librosa.feature.rms(y=res_audio_mono)[0].mean()
         res_audio_stretched = librosa.effects.time_stretch(res_audio_mono, rate=speed)
-        # res_audio_stretched = res_audio_stretched * (
-        #         original_rms / (librosa.feature.rms(y=res_audio_stretched)[0].mean() + 1e-6))  # 恢复到原音量
+        res_audio_stretched = res_audio_stretched * (
+                original_rms / (librosa.feature.rms(y=res_audio_stretched)[0].mean() + 1e-6))  # 恢复到原音量
         res_audio = res_audio_stretched
 
     return res_audio
-
-# def audio_speed(audio: np.ndarray, speed: float, sr: int) -> np.ndarray:
-#     if speed == 1:
-#         return audio
-#
-#     board = Pedalboard([TimeStretch(speed)])
-#     result = board(audio.T, sr)  # pedalboard 输入 shape [channels, samples]
-#     return result.T
-
-# if __name__ == '__main__':
-#     from audiostretchy.stretch import stretch_audio
-#
-#     stretch_audio(r"C:\Users\瑠衣\Desktop\雷总声音\雷总声音.WAV", "output.wav", ratio=1.1)

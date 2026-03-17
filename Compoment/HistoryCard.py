@@ -1,7 +1,6 @@
 import os
 
 from PyQt5.QtCore import QUrl, pyqtSignal, QTimer, Qt
-from PyQt5.QtGui import QStandardItemModel, QFont
 from PyQt5.QtMultimedia import QMediaPlayer
 from PyQt5.QtWidgets import QWidget, QFileDialog, QFrame, QVBoxLayout, QLabel, QPushButton, QSizePolicy, QHBoxLayout, \
     QInputDialog, QComboBox

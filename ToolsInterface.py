@@ -2,20 +2,26 @@ import Config
 import sys
 
 from PyQt5.QtCore import Qt, QPropertyAnimation, QPoint, QTimer
-from PyQt5.QtGui import QStandardItemModel, QStandardItem
 from PyQt5.QtWidgets import QWidget, QFileDialog, QFrame, QVBoxLayout, \
     QInputDialog, QMessageBox, QMenu, QApplication, QSizePolicy, QDialog, QFormLayout, QLabel, QLineEdit, \
     QDialogButtonBox, QHBoxLayout
-import os
 
 from qfluentwidgets import LineEdit, BodyLabel, StrongBodyLabel, PushButton
 
 from Compoment.FileUploadArea import FileUploadArea
 from Compoment.PathDialog import PrettyPathDialog
-from Service.videoUtils import _probe_video_duration_ms
-from ThreadWorker.ToolsWorker import CompressVideoWorker, MergeVideoWorker, MergeSubtitleWorker, CloneVoiceWorker, \
-    SplitSubtitleWorker, SyncSubtitleWorker, ClearBGMWorker, SplitVideoWorker, GetVideoAudioWorker
 from UI.Ui_tools import Ui_Tools
+from functools import lru_cache
+from importlib import import_module
+
+
+@lru_cache(maxsize=None)
+def _load_module(path: str):
+    return import_module(path)
+
+
+def _get_attr(module_path: str, attr_name: str):
+    return getattr(_load_module(module_path), attr_name)
 
 
 
@@ -123,6 +129,7 @@ class ToolsInterface(Ui_Tools, QFrame):
         # self.frame_6.layout().addWidget(self.testarea3)
 
     def _getAudio(self):
+        GetVideoAudioWorker = _get_attr("ThreadWorker.ToolsWorker", "GetVideoAudioWorker")
         video_paths = self.get_src_video_audio_upload_area.file_paths
         if not video_paths:
             QMessageBox.warning(self, "警告", "请上传视频文件")
@@ -140,6 +147,7 @@ class ToolsInterface(Ui_Tools, QFrame):
         self.worker.start()
 
     def _compress_video(self):
+        CompressVideoWorker = _get_attr("ThreadWorker.ToolsWorker", "CompressVideoWorker")
         print("压缩视频")
         video_paths = self.compress_video_upload_area.file_paths
         if not video_paths:
@@ -160,6 +168,7 @@ class ToolsInterface(Ui_Tools, QFrame):
         self.worker.start()
 
     def _clear_bgm(self):
+        ClearBGMWorker = _get_attr("ThreadWorker.ToolsWorker", "ClearBGMWorker")
         print("清除背景音乐")
         video_paths = self.clear_bgm_upload_area.file_paths
         if not video_paths:
@@ -180,6 +189,7 @@ class ToolsInterface(Ui_Tools, QFrame):
         self.worker.start()
 
     def _merge_video(self):
+        MergeVideoWorker = _get_attr("ThreadWorker.ToolsWorker", "MergeVideoWorker")
         print("合并视频")
         video_paths = self.merge_video_upload_area.file_paths
         if not video_paths or len(video_paths) < 2:
@@ -200,6 +210,7 @@ class ToolsInterface(Ui_Tools, QFrame):
         self.worker.start()
 
     def _clone_voice(self):
+        CloneVoiceWorker = _get_attr("ThreadWorker.ToolsWorker", "CloneVoiceWorker")
         print("克隆语音")
         voice_path = self.clone_voice_upload_area.file_paths
         if not voice_path:
@@ -219,6 +230,7 @@ class ToolsInterface(Ui_Tools, QFrame):
         self.worker.start()
 
     def _sync_subtitle(self):
+        SyncSubtitleWorker = _get_attr("ThreadWorker.ToolsWorker", "SyncSubtitleWorker")
         print("同步字幕")
         src_subtitle_paths = self.sync_src_subtitle_upload_area.file_paths
         dst_subtitle_paths = self.sync_dst_subtitle_upload_area.file_paths
@@ -241,6 +253,7 @@ class ToolsInterface(Ui_Tools, QFrame):
         self.worker.start()
 
     def _split_video(self):
+        SplitVideoWorker = _get_attr("ThreadWorker.ToolsWorker", "SplitVideoWorker")
         print("分割视频")
         src_video_path = self.split_src_video_upload_area.file_paths
         dst_video_paths = self.split_dst_video_upload_area.file_paths
@@ -266,6 +279,8 @@ class ToolsInterface(Ui_Tools, QFrame):
 
 
     def _merge_subtitle(self):
+        _probe_video_duration_ms = _get_attr("Service.videoUtils", "_probe_video_duration_ms")
+        MergeSubtitleWorker = _get_attr("ThreadWorker.ToolsWorker", "MergeSubtitleWorker")
         print("合并字幕")
         subtitle_paths = self.merge_subtitle_upload_area.file_paths
         video_paths = self.merge_subtitle_video_upload_area.file_paths
@@ -302,6 +317,8 @@ class ToolsInterface(Ui_Tools, QFrame):
         self.worker.start()
 
     def _split_subtitle(self):
+        _probe_video_duration_ms = _get_attr("Service.videoUtils", "_probe_video_duration_ms")
+        SplitSubtitleWorker = _get_attr("ThreadWorker.ToolsWorker", "SplitSubtitleWorker")
         print("合并字幕")
         subtitle_paths = self.merge_subtitle_upload_area.file_paths
         video_paths = self.merge_subtitle_video_upload_area.file_paths
@@ -335,6 +352,7 @@ class ToolsInterface(Ui_Tools, QFrame):
 
     # FIXME: 废弃代码
     def _merge_subtitle_cast(self):
+        MergeSubtitleWorker = _get_attr("ThreadWorker.ToolsWorker", "MergeSubtitleWorker")
         print("合并字幕")
         subtitle_paths = self.merge_subtitle_upload_area.file_paths
         if not subtitle_paths or len(subtitle_paths) < 2:

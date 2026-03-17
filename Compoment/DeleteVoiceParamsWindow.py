@@ -9,8 +9,7 @@ from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from qfluentwidgets import CheckBox
 
 from Service.datasetUtils import datasetUtils
-from Service.dubbingMain.dubbingElevenLabs import dubbingElevenLabs
-import traceback
+
 
 
 class DeleteVoiceWorker(QThread):
@@ -23,6 +22,8 @@ class DeleteVoiceWorker(QThread):
 
     def run(self):
         try:
+
+            from Service.dubbingMain.dubbingElevenLabs import dubbingElevenLabs
             print(self.voice_dict.values())
             datasetUtils.getInstance().delete_voice_by_id(list(self.voice_dict.values()))
             eleven = dubbingElevenLabs.getInstance()

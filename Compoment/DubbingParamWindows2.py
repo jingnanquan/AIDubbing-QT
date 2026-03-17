@@ -81,6 +81,7 @@ language_code = {
     "泰语": "th",
     "印尼语": "id"
 }
+
 # 幼年、少年、青中年、中老年、老年   os.path.join(resource_path, "prepared_voices","default.mp3"
 prepared_voices = {
     # "默认声音":                   ["uju3wxzG5OhpWcoi3SMy", os.path.join(resource_path, "prepared_voices","default.mp3")],

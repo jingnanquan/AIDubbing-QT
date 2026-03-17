@@ -74,7 +74,7 @@ class AudioSeparator:
                 # 剪切文件
                 shutil.move(source_path, target_path)
                 moved_files.append(target_path)
-            return moved_files[0]
+            return moved_files[0],moved_files[1]
         except Exception as e:
             print(f"发生错误: {e}")
             return ""

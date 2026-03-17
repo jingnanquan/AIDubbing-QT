@@ -158,34 +158,22 @@ class LoginPage(QWidget, Ui_Login):
         self.lineEdit_4.installEventFilter(self)
     
 
-def run2():
+def launch_login():
+    """启动登录界面，返回应用退出码。"""
     login = None
     try:
         app = QApplication(sys.argv)
         login = LoginPage()
         login.show()
-        sys.exit(app.exec_())
+        return app.exec_()
     except Exception as e:
         print(f"发生错误: {str(e)}")
-        traceback.print_exc()  # 打印完整的错误堆栈
-        if login is not None:
-            if login.w is not None:
-                login.w.close()
-        input("按 Enter 键退出...")  # 暂停等待用户输入
-        sys.exit(1)
+        traceback.print_exc()
+        if login is not None and login.w is not None:
+            login.w.close()
+        input("按 Enter 键退出...")
+        return 1
+
 
 if __name__ == '__main__':
-    login = None
-    try:
-        app = QApplication(sys.argv)
-        login = LoginPage()
-        login.show()
-        sys.exit(app.exec_())
-    except Exception as e:
-        print(f"发生错误: {str(e)}")
-        traceback.print_exc()  # 打印完整的错误堆栈
-        if login is not None:
-            if login.w is not None:
-                login.w.close()
-        input("按 Enter 键退出...")  # 暂停等待用户输入
-        sys.exit(1)
+    sys.exit(launch_login())

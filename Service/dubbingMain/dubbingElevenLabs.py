@@ -623,8 +623,10 @@ class dubbingElevenLabs(dubbingInterface):
 if __name__ == '__main__':
     dub = dubbingElevenLabs.getInstance()
     # dub.voice_isolate(r"E:\offer\AI配音web版\7.28\AIDubbing-QT-main\Service\pyannote\audio.mp3", "result.mp3")
-    # dub.voice_isolate(r"E:\offer\AI配音web版\7.28\AIDubbing-QT-main\Service\pyannote\video.mp4", "result2.mp3")
-    dub._elevenlabs_client.models.list()
+    # dub._elevenlabs_client.text_to_speech.
+
+
+    dub.voice_isolate(r"E:\offer\AI配音web版\7.28\AIDubbing-QT-main\Service\pyannote\video.mp4", "result2.mp3")
     # audio_url = (
     #     "https://storage.googleapis.com/eleven-public-cdn/audio/marketing/nicole.mp3"
     # )
