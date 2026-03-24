@@ -435,7 +435,7 @@ if __name__ == '__main__':
     window.merge_subtitle_upload_area.add_files([r"E:\offer\配音任务2\伤心者联盟\测试长视频1_8\中文.srt"])
 
 
-#     window.role_info_edit.setText("""苏清雪：路辰的妻子，与江浩辰互相出轨
+#  window.role_info_edit.setText("""苏清雪：路辰的妻子，与江浩辰互相出轨
 # 路辰：苏清雪的丈夫
 # 江浩辰：童颜的丈夫，与苏清雪在外低俗娱乐
 # 童颜：江浩辰妻子

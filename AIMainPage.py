@@ -13,9 +13,10 @@ from importlib import import_module
 from PyQt5.QtCore import QPropertyAnimation, QEasingCurve, Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import QApplication, QDesktopWidget, QSizePolicy, QFrame, QVBoxLayout, QLabel
-from qfluentwidgets import SplitFluentWindow
+from qfluentwidgets import SplitFluentWindow, NavigationItemPosition
 from qfluentwidgets import FluentIcon as FIF
 
+from Service.ccTest import read_config
 # 延迟导入重量级组件
 # from Compoment.VideoPlayWidget import VideoPlayerWidget
 # from ProjectCompoment.ProjectInterface import ProjectInterface
@@ -32,6 +33,7 @@ WIDGET_DEFINITIONS = {
     4: ("ProjectCompoment.ProjectInterface", "ProjectInterface"),
     5: ("AnnotationInterface", "AnnotationInterface"),
     6: ("DubbingInterface", "DubbingInterface"),
+    7: ("SettingInterface", "SettingInterface"),
 }
 
 class WidgetRegistry:
@@ -165,6 +167,7 @@ class Window(SplitFluentWindow):
         self.ToolsInterface = placeholder_widget("tools",3)
         self.AnnotationInterface = placeholder_widget("annotation",5)
         self.DubbingInterface = placeholder_widget("dubbing",6)
+        self.SettingInterface = placeholder_widget("setting",7)
 
         # 先添加占位符，实际组件延迟创建
         self.addSubInterface(self.AnnotationInterface, FIF.TILES, '批量标注')
@@ -176,6 +179,9 @@ class Window(SplitFluentWindow):
         self.addSubInterface(self.ToolsInterface, FIF.CLIPPING_TOOL, '工具箱')
         self.navigationInterface.addSeparator()
         self.addSubInterface(self.ProjectInterface, FIF.HOME, '我的项目')
+
+        self.addSubInterface(self.SettingInterface, FIF.SETTING, '设置', NavigationItemPosition.BOTTOM)
+
         self.stackedWidget.currentChanged.connect(self.pageSignal)
         self.stackedWidget.currentWidget().lazy_load()
         self._start_background_preload()
@@ -270,6 +276,7 @@ class StreamCapturer(io.StringIO):
 
     def get_log(self):
         return ''.join(self.content)
+
 def launch(enable_profiler=False):
     """启动主界面，可选启用性能分析。"""
     window = None
@@ -284,6 +291,8 @@ def launch(enable_profiler=False):
         if profiler:
             profiler.enable()
         print("app start")
+
+        read_config()
 
         app = QApplication(sys.argv)
         window = Window(capturer=my_capturer)
