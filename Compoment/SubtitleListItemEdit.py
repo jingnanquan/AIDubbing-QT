@@ -1,8 +1,29 @@
 from PyQt5.QtCore import Qt, pyqtSignal, QTimer
 from PyQt5.QtGui import QStandardItemModel, QFont, QRegExpValidator, QFontMetrics
-from PyQt5.QtWidgets import QFrame, QVBoxLayout, QSizePolicy, QHBoxLayout, QComboBox
+from PyQt5.QtWidgets import QFrame, QVBoxLayout, QSizePolicy, QHBoxLayout, QComboBox, QLineEdit, QTextEdit
 from PyQt5.QtCore import QRegExp
 from qfluentwidgets import PushButton, TextEdit, BodyLabel, LineEdit
+
+from PyQt5.QtCore import Qt, QEvent
+from PyQt5.QtWidgets import QComboBox
+
+
+class NoScrollComboBox(QComboBox):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        # 安装事件过滤器
+        self.installEventFilter(self)
+
+    def eventFilter(self, obj, event):
+        # 拦截鼠标滚轮事件
+        if event.type() == QEvent.Wheel:
+            return True  # 拦截事件，不再传递
+
+        # 拦截鼠标按下事件（可选，防止在展开时滚动）
+        if event.type() == QEvent.MouseButtonPress:
+            return super().eventFilter(obj, event)
+
+        return super().eventFilter(obj, event)
 
 
 class SubtitleListItemEdit(QFrame):
@@ -64,20 +85,20 @@ class SubtitleListItemEdit(QFrame):
         time_re = QRegExp(r"^\d{2}:\d{2}:\d{2},\d{3}$")
         validator = QRegExpValidator(time_re, self)
 
-        self.start_edit = LineEdit()
+        self.start_edit = QLineEdit()
         self.start_edit.setFont(QFont("Microsoft YaHei UI", 8))
         self.start_edit.setText(start)
         self.start_edit.setValidator(validator)
         self.start_edit.setPlaceholderText("00:00:00,000")
 
-        self.end_edit = LineEdit()
+        self.end_edit = QLineEdit()
         self.end_edit.setFont(QFont("Microsoft YaHei UI", 8))
         self.end_edit.setText(end)
         self.end_edit.setValidator(validator)
         self.end_edit.setPlaceholderText("00:00:00,000")
 
         # 角色选择
-        self.roles = QComboBox()
+        self.roles = NoScrollComboBox()
         self.roles.setFixedHeight(30)
         self.roles.setModel(roles_model)
 
@@ -110,19 +131,19 @@ class SubtitleListItemEdit(QFrame):
                 """)
 
         # 字幕内容编辑框
-        self.text_edit = TextEdit()
+        self.text_edit = QTextEdit()
         self.text_edit.setPlainText(text)
         self.text_edit.setAcceptRichText(False)
         self.text_edit.setPlaceholderText("输入字幕内容…")
 
         # 设置字体（通过setFont）
-        text_font = QFont("Microsoft YaHei UI", 12)
+        text_font = QFont("Microsoft YaHei UI", 11)
         self.text_edit.setFont(text_font)
 
         # 设置高度策略
         # self.text_edit.setMaximumHeight(40)
-        self.text_edit.setMinimumHeight(35)
-        self.text_edit.setMaximumHeight(35)
+        self.text_edit.setMinimumHeight(38)
+        self.text_edit.setMaximumHeight(38)
 
         self.text_edit.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum)
 
@@ -130,6 +151,7 @@ class SubtitleListItemEdit(QFrame):
         # 设置自动换行
         self.text_edit.setWordWrapMode(True)
         self.text_edit.setLineWrapMode(TextEdit.WidgetWidth)
+
 
     def _setup_layout(self):
         """设置布局"""

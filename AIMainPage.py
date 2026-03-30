@@ -207,6 +207,8 @@ class Window(SplitFluentWindow):
 
         # 回到该界面时，进行一次刷新
         if self.ProjectInterface.main_widget and self.stackedWidget.currentWidget() == self.ProjectInterface:
+            # ProjectInterface =
+            # if isinstance(self.ProjectInterface.main_widget, ProjectInterface):
             self.ProjectInterface.main_widget.async_refresh()
 
         # 刷新voicedict

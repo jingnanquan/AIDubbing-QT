@@ -289,6 +289,11 @@ class Ui_SubtitleEdit(object):
         self.BottomPositionSlider.setOrientation(QtCore.Qt.Horizontal)
         self.BottomPositionSlider.setObjectName("BottomPositionSlider")
         self.bottomBarLayout.addWidget(self.BottomPositionSlider)
+        self.BottomTimeLabelMax = BodyLabel(self.BottomBar)
+        self.BottomTimeLabelMax.setMinimumSize(QtCore.QSize(120, 0))
+        self.BottomTimeLabelMax.setAlignment(QtCore.Qt.AlignCenter)
+        self.BottomTimeLabelMax.setObjectName("BottomTimeLabelMax")
+        self.bottomBarLayout.addWidget(self.BottomTimeLabelMax)
         self.bottomBarLayout.setStretch(2, 1)
         self.verticalLayout_2.addWidget(self.BottomBar)
         self.verticalLayout_2.setStretch(0, 1)
@@ -326,4 +331,5 @@ class Ui_SubtitleEdit(object):
         self.AddRoleBtn.setText(_translate("SubtitleEdit", "新增角色"))
         self.BottomPlayBtn.setText(_translate("SubtitleEdit", "播放"))
         self.BottomTimeLabel.setText(_translate("SubtitleEdit", "00:00:00,000"))
+        self.BottomTimeLabelMax.setText(_translate("SubtitleEdit", "00:00:00,000"))
 from qfluentwidgets import BodyLabel, ListWidget, PushButton, SimpleCardWidget, Slider

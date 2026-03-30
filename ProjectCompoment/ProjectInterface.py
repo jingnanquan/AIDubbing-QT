@@ -609,10 +609,15 @@ class ProjectCard(QFrame):
             QApplication.processEvents()
 
             try:
-                from AnnotationInterface import AnnotationInterface
-                self.detail_page = AnnotationInterface(self.project)
+                SubtitleInterface = _get_attr("ReviewInterface.SubtitleEditorInterface", "SubtitleEditorInterface")
+                self.subtitle_editor = SubtitleInterface()
+                self.subtitle_editor.setWindowModality(Qt.ApplicationModal)
+                self.subtitle_editor.set_srt_paths([self.project.subtitle_path])
+                self.subtitle_editor.show()  # 显示
+                # from AnnotationInterface import AnnotationInterface
+                # self.detail_page = AnnotationInterface(self.project)
                 loading_msg.hide()
-                self.detail_page.show()
+
             except ImportError:
                 loading_msg.hide()
                 QMessageBox.information(self, "提示", "字幕标注功能开发中...")

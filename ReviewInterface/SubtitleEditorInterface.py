@@ -1,42 +1,54 @@
 import copy
 import os
 import sys
+
 from functools import lru_cache
 from importlib import import_module
-from threading import Thread
-from queue import Queue
 
-import qfluentwidgets
+from PyQt5 import sip
 from PyQt5.QtCore import (
-    Qt, QPropertyAnimation, QPoint, QTimer, QProcess, QUrl, QElapsedTimer,
-    QThread, pyqtSignal, QObject
+    Qt, QPropertyAnimation, QPoint, QTimer, QUrl,
+    QThread, pyqtSignal, QObject, QSizeF, QEasingCurve
 )
-from PyQt5.QtGui import QStandardItemModel, QStandardItem
+from PyQt5.QtGui import QStandardItemModel, QStandardItem, QPainter, QBrush
 from PyQt5.QtWidgets import (
     QWidget, QFileDialog, QFrame, QVBoxLayout, QInputDialog, QMessageBox,
-    QMenu, QApplication, QSizePolicy
+    QMenu, QApplication, QSizePolicy, QGraphicsScene, QGraphicsView, QPushButton,
+    QStyle, QHBoxLayout, QLabel, QDesktopWidget
 )
+from PyQt5.QtMultimedia import QMediaContent, QMediaPlayer
+from PyQt5.QtMultimediaWidgets import QGraphicsVideoItem
 
 from qfluentwidgets.components.widgets.frameless_window import FramelessWindow
+# from qfluentwidgets import BodyLabel, Slider
 
 from Compoment.SubtitleListItemEdit import SubtitleListItemEdit
 from UI.Ui_subtitleEdit import Ui_SubtitleEdit
 from Config import env
 
-if sys.platform == "win32":
-    import ctypes
-    from ctypes import wintypes
-    # Windows API 声明
-    user32 = ctypes.WinDLL('user32', use_last_error=True)
-    user32.SetParent.argtypes = [wintypes.HWND, wintypes.HWND]
-    user32.SetParent.restype = wintypes.HWND
-    user32.MoveWindow.argtypes = [wintypes.HWND, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, wintypes.BOOL]
-    user32.MoveWindow.restype = wintypes.BOOL
-elif sys.platform == "linux":
-    import subprocess
-    import re
+@lru_cache(maxsize=None)
+def _load_module(path: str):
+    return import_module(path)
 
 
+def _get_attr(module_path: str, attr_name: str):
+    return getattr(_load_module(module_path), attr_name)
+
+# 参考 VideoPlayWidget 实现的 GraphicsVideoItem
+class GraphicsVideoItem(QGraphicsVideoItem):
+    """ Graphics video item """
+
+    def paint(self, painter, option, widget=None):
+        painter.setBrush(QBrush(Qt.black))
+        # 填充整个视频项区域
+        painter.drawRect(self.boundingRect())
+
+        painter.setCompositionMode(QPainter.CompositionMode_Difference)
+        # 先调用基类方法绘制原始视频
+        super().paint(painter, option, widget)
+
+
+# 格式化时间工具函数
 def _format_time(ms: int) -> str:
     if ms is None or ms < 0:
         ms = 0
@@ -47,214 +59,142 @@ def _format_time(ms: int) -> str:
     return f"{hours:02}:{minutes:02}:{seconds:02},{milliseconds:03}"
 
 
-class _PlayerBase:
-    def set_video_widget(self, widget: QWidget):
-        self._video_widget = widget
+# 统一的 QtMedia 播放后端（参考 VideoPlayerWidget）
+class _QtMediaBackend(QObject):
+    duration_changed = pyqtSignal(int)
+    position_changed = pyqtSignal(int)
+    state_changed = pyqtSignal(QMediaPlayer.State)
 
-    def open(self, file_path: str) -> int:
-        raise NotImplementedError()
-
-    def play(self):
-        raise NotImplementedError()
-
-    def pause(self):
-        raise NotImplementedError()
-
-    def stop(self):
-        raise NotImplementedError()
-
-    def seek(self, ms: int):
-        raise NotImplementedError()
-
-    def duration(self) -> int:
-        return 0
-
-    def position(self) -> int:
-        return 0
-
-    def is_playing(self) -> bool:
-        return False
-
-
-class _QtMediaBackend(_PlayerBase):
     def __init__(self, parent: QWidget):
-        from PyQt5.QtMultimedia import QMediaContent, QMediaPlayer
-        from PyQt5.QtMultimediaWidgets import QVideoWidget
-
+        super().__init__(parent)
         self._parent = parent
-        self._QMediaContent = QMediaContent
-        self._QMediaPlayer = QMediaPlayer
-        self._QVideoWidget = QVideoWidget
-
         self.mediaPlayer = QMediaPlayer(None, QMediaPlayer.VideoSurface)
-        self.videoWidget = QVideoWidget(parent)
-        self.videoWidget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.mediaPlayer.setVideoOutput(self.videoWidget)
+        self.videoItem = GraphicsVideoItem()
+        self.scene = QGraphicsScene(self)
+        self.view = QGraphicsView(self.scene)
+        self.view.setFrameShape(QFrame.NoFrame)
+        self.view.setAlignment(Qt.AlignCenter)
+        self.view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.view.setDragMode(QGraphicsView.NoDrag)
+        self.view.setAcceptDrops(False)
+        self.view.viewport().setAcceptDrops(False)
+        self.view.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.view.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+
+        self.scene.addItem(self.videoItem)
+        self.mediaPlayer.setVideoOutput(self.videoItem)
+
         self._file_path = ""
+        self._position_timer = QTimer(self)
+        self._position_timer.setInterval(100)
+        self._position_timer.timeout.connect(self._emit_position)
+
+        # 绑定信号
+        self.mediaPlayer.durationChanged.connect(self.duration_changed.emit)
+        self.mediaPlayer.stateChanged.connect(self.state_changed.emit)
+        self.mediaPlayer.error.connect(self._handle_error)
+        try:
+            self.videoItem.nativeSizeChanged.connect(self._on_native_size_changed)
+        except Exception:
+            pass
+
+    def _on_native_size_changed(self, size: QSizeF):
+        """适配视频原生尺寸"""
+        try:
+            if size and size.width() > 0 and size.height() > 0:
+                self.videoItem.setSize(size)
+                self.scene.setSceneRect(self.videoItem.boundingRect())
+                self._fit_video_in_view()
+        except Exception:
+            pass
+
+    def _fit_video_in_view(self):
+        """保持宽高比适配视频"""
+        try:
+            bounds = self.videoItem.boundingRect()
+            if not bounds.isEmpty():
+                self.view.resetTransform()
+                self.view.fitInView(self.videoItem, Qt.KeepAspectRatio)
+        except Exception:
+            pass
+
+    def _emit_position(self):
+        """发射当前播放位置信号"""
+        self.position_changed.emit(self.mediaPlayer.position())
+
+    def _handle_error(self):
+        """处理播放错误"""
+        QMessageBox.critical(self._parent, "播放错误", self.mediaPlayer.errorString())
 
     def set_video_widget(self, widget: QWidget):
-        super().set_video_widget(widget)
-        layout = widget.layout()
-        if layout is None:
+        """将视频视图嵌入到指定控件"""
+        if widget.layout() is None:
             layout = QVBoxLayout(widget)
             layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(self.videoWidget)
+        else:
+            layout = widget.layout()
+
+        # 清空原有布局
+        for i in reversed(range(layout.count())):
+            layout.itemAt(i).widget().deleteLater()
+
+        layout.addWidget(self.view)
 
     def open(self, file_path: str) -> int:
+        """打开视频文件"""
         self._file_path = file_path
         self.mediaPlayer.stop()
-        self.mediaPlayer.setMedia(self._QMediaContent(QUrl.fromLocalFile(file_path)))
-        return self.duration()
+        self.mediaPlayer.setMedia(QMediaContent(QUrl.fromLocalFile(file_path)))
+
+        # 启动位置轮询定时器
+        if not self._position_timer.isActive():
+            self._position_timer.start()
+
+        # 等待时长加载（简易等待，实际可通过信号异步处理）
+        QTimer.singleShot(500, lambda: self.duration_changed.emit(self.mediaPlayer.duration()))
+        self.play()
+        return self.mediaPlayer.duration()
 
     def play(self):
+        """播放"""
         self.mediaPlayer.play()
+        if not self._position_timer.isActive():
+            self._position_timer.start()
 
     def pause(self):
+        """暂停"""
         self.mediaPlayer.pause()
 
     def stop(self):
+        """停止"""
         self.mediaPlayer.stop()
+        self._position_timer.stop()
 
     def seek(self, ms: int):
-        self.mediaPlayer.setPosition(int(ms))
-
-    def duration(self) -> int:
-        try:
-            return int(self.mediaPlayer.duration())
-        except Exception:
-            return 0
-
-    def position(self) -> int:
-        try:
-            return int(self.mediaPlayer.position())
-        except Exception:
-            return 0
-
-    def is_playing(self) -> bool:
-        try:
-            return self.mediaPlayer.state() == self._QMediaPlayer.PlayingState
-        except Exception:
-            return False
-
-
-class _FfplayBackend(_PlayerBase):
-    """
-    ffplay 播放后端（Windows 优先尝试嵌入到 Qt 容器）。
-    由于 ffplay 没有稳定的运行时控制 API，这里采用“seek 即重启进程从指定时间播放”的策略，
-    用 QElapsedTimer 近似刷新 position，驱动底部进度条与字幕滚动。
-    """
-
-    def __init__(self, parent: QWidget):
-        self._parent = parent
-        self._proc = QProcess(parent)
-        self._proc.setProcessChannelMode(QProcess.MergedChannels)
-        self._ffplay_path = self._find_ffplay()
-        self._file_path = ""
-        self._duration_ms = 0
-        self._playing = False
-        self._base_ms = 0
-        self._timer = QElapsedTimer()
-
-    @staticmethod
-    def _find_ffplay() -> str:
-        candidates = [
-            "ffplay.exe",
-            os.path.join(os.getcwd(), "ffmpeg", "bin", "ffplay.exe"),
-            os.path.join(os.getcwd(), "bin", "ffplay.exe"),
-            os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "ffmpeg", "bin", "ffplay.exe"),
-        ]
-        for p in candidates:
-            try:
-                if os.path.isabs(p) and os.path.exists(p):
-                    return os.path.normpath(p)
-            except Exception:
-                pass
-        # 交给系统 PATH
-        return "ffplay.exe"
-
-    def _probe_duration_ms(self, file_path: str) -> int:
-        try:
-            from Service.videoUtils import _probe_video_duration_ms
-            return int(_probe_video_duration_ms(file_path))
-        except Exception:
-            return 0
-
-    def open(self, file_path: str) -> int:
-        self._file_path = file_path
-        self._duration_ms = self._probe_duration_ms(file_path)
-        self.stop()
-        return self._duration_ms
-
-    def play(self):
-        if not self._file_path:
-            return
-        if self._playing:
-            return
-        self._start_from(self.position())
-
-    def pause(self):
-        # ffplay 无稳定 pause 控制，这里用 stop 模拟
-        self.stop()
-
-    def stop(self):
-        try:
-            if self._proc.state() != QProcess.NotRunning:
-                self._proc.kill()
-                self._proc.waitForFinished(1000)
-        except Exception:
-            pass
-        self._playing = False
-
-    def seek(self, ms: int):
-        if not self._file_path:
-            return
+        """跳转到指定时间"""
         ms = max(0, int(ms))
-        if self._duration_ms > 0:
-            ms = min(ms, self._duration_ms)
-        self._start_from(ms)
-
-    def _start_from(self, ms: int):
-        self.stop()
-        self._base_ms = int(ms)
-        self._timer.restart()
-        self._playing = True
-
-        ss = f"{ms / 1000.0:.3f}"
-        args = [
-            "-hide_banner",
-            "-autoexit",
-            "-loglevel", "error",
-            "-ss", ss,
-            "-i", self._file_path,
-        ]
-        # 不强制嵌入时也能用：默认显示窗口；后续会尝试嵌入（失败则忽略）
-        self._proc.start(self._ffplay_path, args)
+        if self.mediaPlayer.duration() > 0:
+            ms = min(ms, self.mediaPlayer.duration())
+        self.mediaPlayer.setPosition(ms)
 
     def duration(self) -> int:
-        return int(self._duration_ms or 0)
+        """获取视频时长"""
+        return int(self.mediaPlayer.duration() or 0)
 
     def position(self) -> int:
-        if not self._playing:
-            return int(self._base_ms)
-        try:
-            return int(self._base_ms + self._timer.elapsed())
-        except Exception:
-            return int(self._base_ms)
+        """获取当前播放位置"""
+        return int(self.mediaPlayer.position() or 0)
 
     def is_playing(self) -> bool:
-        return bool(self._playing)
+        """是否正在播放"""
+        return self.mediaPlayer.state() == QMediaPlayer.PlayingState
+
+    def resize_view(self):
+        """调整视频视图大小"""
+        self._fit_video_in_view()
 
 
-@lru_cache(maxsize=None)
-def _load_module(path: str):
-    return import_module(path)
-
-
-def _get_attr(module_path: str, attr_name: str):
-    return getattr(_load_module(module_path), attr_name)
-
-
-# 新增：字幕项构建线程
+# 字幕项构建线程
 class SubtitleItemBuilder(QThread):
     finished = pyqtSignal(list)  # 传递构建好的控件列表
     progress = pyqtSignal(int)  # 进度信号
@@ -295,7 +235,6 @@ class SubtitleEditorInterface(Ui_SubtitleEdit, FramelessWindow):
         self.subtitlePaths = []
         self.subtitles = []
         self.role_match_list = []
-        self.video_player = None
         self._player_backend = None
         self._position_poll_timer = None
         self.video_file = ""
@@ -324,9 +263,10 @@ class SubtitleEditorInterface(Ui_SubtitleEdit, FramelessWindow):
         self.ExportBtn.clicked.connect(self.export_subtitle_file)  # 导出另存为
         self.ExportBtn.setText("另存为字幕文件")
 
+        self.BottomPlayBtn.setText("暂停")
         self.BottomPlayBtn.clicked.connect(self.toggle_play_pause)
         self.BottomPositionSlider.sliderMoved.connect(self.on_position_slider_moved)
-        self.BottomPositionSlider.sliderReleased.connect(self.on_position_slider_released)
+        # self.BottomPositionSlider.sliderReleased.connect(self.on_position_slider_released)
 
         self.SubListWidget.itemClicked.connect(self.show_subtitle_list)
         self.RoleListWidget.itemClicked.connect(self.modify_role_list)
@@ -354,18 +294,21 @@ class SubtitleEditorInterface(Ui_SubtitleEdit, FramelessWindow):
 
         self._update_drop_hints()
 
-    def _reposition_video_hint(self):
-        try:
-            if self.VideoDropHint is None:
-                return
-            self.VideoDropHint.setGeometry(0, 0, self.CustomVideoWidget.width(), self.CustomVideoWidget.height())
-            self.VideoDropHint.raise_()
-        except Exception:
-            pass
+    # def _reposition_video_hint(self):
+    #     try:
+    #         if self.VideoDropHint is None:
+    #             return
+    #         self.VideoDropHint.setGeometry(0, 0, self.CustomVideoWidget.width(), self.CustomVideoWidget.height())
+    #         self.VideoDropHint.raise_()
+    #     except Exception:
+    #         pass
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        self._reposition_video_hint()
+        # self._reposition_video_hint()
+        # 调整视频视图大小
+        if self._player_backend:
+            self._player_backend.resize_view()
 
     def mark_dirty(self):
         self.is_dirty = True
@@ -385,30 +328,21 @@ class SubtitleEditorInterface(Ui_SubtitleEdit, FramelessWindow):
             pass
 
     def _init_video_player(self):
-        # 内联播放器：优先 ffplay，失败则回退 QtMultimedia
+        """初始化视频播放器（参考 VideoPlayerWidget）"""
         if self.CustomVideoWidget.layout() is None:
             self.CustomVideoWidget.setLayout(QVBoxLayout())
         self.CustomVideoWidget.layout().setContentsMargins(0, 0, 0, 0)
 
-        try:
-            self._player_backend = _FfplayBackend(self)
-        except Exception:
-            self._player_backend = None
-
-        if self._player_backend is None:
-            self._player_backend = _QtMediaBackend(self)
-
+        # 初始化 Qt 媒体后端
+        self._player_backend = _QtMediaBackend(self)
         self._player_backend.set_video_widget(self.CustomVideoWidget)
+        self._player_backend.duration_changed.connect(self._sync_duration)
+        self._player_backend.position_changed.connect(self._on_position_updated)
 
+        # 停止旧的轮询定时器（如果存在）
         if isinstance(self._position_poll_timer, QTimer):
             self._position_poll_timer.stop()
             self._position_poll_timer.deleteLater()
-            self._position_poll_timer = None
-
-        self._position_poll_timer = QTimer(self)
-        self._position_poll_timer.setInterval(50)  # 高精度刷新
-        self._position_poll_timer.timeout.connect(self._poll_position)
-        self._position_poll_timer.start()
 
     def select_video_file(self, video_file=""):
         try:
@@ -420,11 +354,12 @@ class SubtitleEditorInterface(Ui_SubtitleEdit, FramelessWindow):
 
             print(self.video_file)
             if self.video_file:
-                # 只有再用到的时候，才初始化
+                # 初始化播放器
                 if not self._player_backend:
                     self._init_video_player()
-                duration = self._player_backend.open(self.video_file)
-                self._sync_duration(duration)
+
+                # 打开视频文件
+                self._player_backend.open(self.video_file)
                 self.CustomVideoWidget.setStyleSheet("""#CustomVideoWidget{border: 1px solid #ccc;}""")
                 self._update_drop_hints()
         except Exception as e:
@@ -432,18 +367,15 @@ class SubtitleEditorInterface(Ui_SubtitleEdit, FramelessWindow):
             QMessageBox.warning(self, "提示", str(e))
 
     def _sync_duration(self, duration_ms: int):
+        """同步视频时长到进度条"""
         duration_ms = int(duration_ms or 0)
         self.BottomPositionSlider.setRange(0, max(0, duration_ms))
-        if duration_ms == 0:
-            self.BottomTimeLabel.setText("00:00:00,000")
-        else:
-            self.BottomTimeLabel.setText(_format_time(0))
+        self.BottomTimeLabel.setText(_format_time(0))
+        self.BottomTimeLabelMax.setText(_format_time(duration_ms))
 
-    def _poll_position(self):
-        if not self._player_backend:
-            return
-        pos = int(self._player_backend.position() or 0)
-        # 避免 sliderMoved 时抢焦点
+    def _on_position_updated(self, pos: int):
+        """更新播放位置和字幕滚动"""
+        # 避免滑块拖动时更新
         if not self.BottomPositionSlider.isSliderDown():
             self.BottomPositionSlider.setValue(pos)
         self.BottomTimeLabel.setText(_format_time(pos))
@@ -461,14 +393,21 @@ class SubtitleEditorInterface(Ui_SubtitleEdit, FramelessWindow):
             self.BottomPlayBtn.setText("暂停")
 
     def on_position_slider_moved(self, pos: int):
-        self.BottomTimeLabel.setText(_format_time(int(pos)))
-
-    def on_position_slider_released(self):
-        if not self._player_backend:
-            return
+        """滑块拖动时更新时间显示"""
         pos = int(self.BottomPositionSlider.value())
         self._player_backend.seek(pos)
-        self.BottomPlayBtn.setText("暂停")
+        # self.BottomTimeLabel.setText(_format_time(int(pos)))
+
+    # def on_position_slider_released(self):
+    #     """滑块释放时跳转到指定位置"""
+    #     if not self._player_backend:
+    #         return
+    #     pos = int(self.BottomPositionSlider.value())
+    #     self._player_backend.seek(pos)
+    #     # 如果是暂停状态，点击滑块后自动播放
+    #     if not self._player_backend.is_playing():
+    #         self._player_backend.play()
+    #         self.BottomPlayBtn.setText("暂停")
 
     def _update_RoleListWidget(self):
         self.RoleListWidget.clear()
@@ -518,9 +457,11 @@ class SubtitleEditorInterface(Ui_SubtitleEdit, FramelessWindow):
         except Exception:
             pass
         try:
-            if getattr(self, "VideoDropHint", None) is not None:
-                self.VideoDropHint.setVisible(not bool(self.video_file))
-                self._reposition_video_hint()
+            if hasattr(self, "VideoDropHint"):
+                if isinstance(self.VideoDropHint, QLabel) and not sip.isdeleted(self.VideoDropHint):
+                    self.VideoDropHint.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+                # self.VideoDropHint.setVisible(not bool(self.video_file))
+                # self._reposition_video_hint()
         except Exception:
             pass
 
@@ -561,27 +502,22 @@ class SubtitleEditorInterface(Ui_SubtitleEdit, FramelessWindow):
             # 保留原有角色匹配
             pass
 
-        # 全量重建（仅切换文件时），使用线程批量构建
+        # 全量重建（仅切换文件时）
         self._clear_subtitle_items()
         self._rebuild_subtitle_items_batch()
 
     def _clear_subtitle_items(self):
         """清空字幕控件"""
-        # 禁用容器以提升性能
-        # self.SubListContainer.setUpdatesEnabled(False)
-        # 批量删除控件
         for w in self.subtitle_widgets:
             w.deleteLater()
         self.subtitle_widgets.clear()
-        # 重新启用更新
-        # self.SubListContainer.setUpdatesEnabled(True)
 
     def _reindex_subtitles(self):
         for i, sub in enumerate(self.subtitles):
             sub["index"] = i + 1
 
     def _rebuild_subtitle_items_batch(self):
-        """批量重建字幕项（线程化）"""
+        """批量重建字幕项"""
         self._reindex_subtitles()
         if self.subtitles is None:
             self.subtitles = []
@@ -606,42 +542,6 @@ class SubtitleEditorInterface(Ui_SubtitleEdit, FramelessWindow):
             w.deleteRequested.connect(self.on_subtitle_delete)
             self.container_layout.addWidget(w)
             self.subtitle_widgets.append(w)
-
-        # self._reindex_subtitles()
-        #
-        # # 对齐角色列表长度
-        # while len(self.role_match_list) < len(self.subtitles):
-        #     self.role_match_list.append(self.roles_model.item(0).text())
-        # if len(self.role_match_list) > len(self.subtitles):
-        #     self.role_match_list = self.role_match_list[: len(self.subtitles)]
-        #
-        # # 创建构建线程
-        # self.builder = SubtitleItemBuilder(
-        #     self.subtitles,
-        #     self.role_match_list,
-        #     self.roles_model
-        # )
-        # # 绑定线程信号
-        # self.builder.finished.connect(self._on_items_built)
-        # self.builder.start()
-
-    # def _on_items_built(self, widgets):
-    #     """线程构建完成后的UI处理"""
-    #     # 禁用容器以提升性能
-    #     # self.SubListContainer.setUpdatesEnabled(False)
-    #
-    #     # 批量添加控件并绑定事件
-    #     for i, w in enumerate(widgets):
-    #         w.changed.connect(self.on_subtitle_item_changed)
-    #         w.insertAbove.connect(self.on_subtitle_insert_above)
-    #         w.insertBelow.connect(self.on_subtitle_insert_below)
-    #         w.deleteRequested.connect(self.on_subtitle_delete)
-    #         self.container_layout.addWidget(w)
-    #         self.subtitle_widgets.append(w)
-
-        # 恢复容器更新
-        # self.SubListContainer.setUpdatesEnabled(True)
-        # self.SubListContainer.update()
 
     def on_subtitle_item_changed(self, row: int, data: dict):
         """修改字幕项（增量更新）"""
@@ -837,8 +737,6 @@ class SubtitleEditorInterface(Ui_SubtitleEdit, FramelessWindow):
                 self._player_backend.stop()
         except Exception:
             pass
-        if isinstance(self._position_poll_timer, QTimer):
-            self._position_poll_timer.stop()
         super().closeEvent(event)
 
     def _update_SubScroll(self, msec: list):
@@ -979,9 +877,10 @@ class SubtitleEditorInterface(Ui_SubtitleEdit, FramelessWindow):
                     background-color: #F8F8F8;
                     border: 2px dashed #a1bbd7;
                 }""")
-                if getattr(self, "VideoDropHint", None) is not None:
-                    self.VideoDropHint.setText("松开即可上传视频")
-                    self.VideoDropHint.show()
+                if hasattr(self, "VideoDropHint"):
+                    if isinstance(self.VideoDropHint, QLabel) and not sip.isdeleted(self.VideoDropHint):
+                        self.VideoDropHint.setText("松开即可上传视频")
+                        self.VideoDropHint.show()
             else:
                 self.SubListBox.setStyleSheet("""#SubListBox{
                         background-color: #F8F8F8;
@@ -1000,8 +899,9 @@ class SubtitleEditorInterface(Ui_SubtitleEdit, FramelessWindow):
         self.CustomVideoWidget.setStyleSheet("""#CustomVideoWidget{border: 1px solid #ccc;}""")
         if hasattr(self, "SubListDropHint"):
             self.SubListDropHint.setText("拖拽上传字幕")
-        if getattr(self, "VideoDropHint", None) is not None:
-            self.VideoDropHint.setText("拖拽视频文件到此处上传")
+        if hasattr(self, "VideoDropHint"):
+            if isinstance(self.VideoDropHint, QLabel) and not sip.isdeleted(self.VideoDropHint):
+                self.VideoDropHint.setText("拖拽视频文件到此处上传")
         self._update_drop_hints()
 
     def dropEvent(self, event):
@@ -1042,10 +942,47 @@ class SubtitleEditorInterface(Ui_SubtitleEdit, FramelessWindow):
                 self.select_video_file(decide_url)
             self._update_drop_hints()
 
+    def set_srt_paths(self, paths:list):
+        utils = _load_module("Service.subtitleUtils")
+        get_srt_files_in_folder = getattr(utils, "get_srt_files_in_folder")
+        is_srt_file = getattr(utils, "is_srt_file")
+        is_video_file = _get_attr("Service.videoUtils", "is_video_file")
+        # paths = [url.toLocalFile() for url in urls]
+        print(paths)
+
+        srt_paths = []
+        for path in paths:
+            if os.path.isdir(path):
+                srt_paths.extend(get_srt_files_in_folder(path))
+            elif is_srt_file(path):
+                srt_paths.append(path)
+
+        for file_name in srt_paths:
+            self.subtitlePaths.append(file_name)
+            self.SubListWidget.addItem(os.path.basename(file_name))
+            print(self.subtitlePaths)
+        self._update_drop_hints()
+
     def on_general_task_finished(self, msg):
         print(msg)
         QMessageBox.information(self, "提示", msg)
 
+    def show(self):
+        # 创建淡入动画
+        width = 1600
+        height = 980
+        screen = QDesktopWidget().screenGeometry()
+        x = (screen.width() - width) // 2
+        y = (screen.height() - height) // 2
+        self.setGeometry(x, y, width, height)
+        self.setWindowOpacity(0)  # 初始透明
+        self.animation = QPropertyAnimation(self, b"windowOpacity")
+        self.animation.setDuration(300)  # 动画时长（毫秒）
+        self.animation.setStartValue(0)  # 起始透明度
+        self.animation.setEndValue(1)  # 结束透明度
+        self.animation.setEasingCurve(QEasingCurve.InOutQuad)  # 缓动曲线
+        self.animation.start()
+        super().show()
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
