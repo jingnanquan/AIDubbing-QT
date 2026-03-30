@@ -2,7 +2,8 @@ import os
 import dataset
 from sqlalchemy.pool import QueuePool
 
-from ProjectCompoment.dubbingEntity import Project, Subtitle
+from ProjectCompoment.dubbingEntity import Project, Subtitle, SubtitleProject
+
 
 class dubbingDatasetUtils:
     _instance = None
@@ -20,6 +21,7 @@ class dubbingDatasetUtils:
                                  })
         self.projectTable = self.db["projectTable"]
         self.subtitleTable = self.db["subtitleTable"]
+        self.subtileProjectTable = self.db["subtitleProjectTable"]
 
     @classmethod
     def getInstance(cls) -> 'dubbingDatasetUtils':
@@ -37,6 +39,17 @@ class dubbingDatasetUtils:
         except Exception:
             return -1
 
+    # 插入字幕项目关联
+    def insert_subtitle_project(self, subtitle_project: SubtitleProject):
+        data = subtitle_project.__dict__.copy()
+        try:
+            project_id = self.subtileProjectTable.insert(data)
+            last_row = self.subtileProjectTable.find_one(order_by='-id')
+            return last_row['id'] if last_row and 'id' in last_row else -1
+        except Exception:
+            return -1
+
+
     # 插入字幕
     def insert_subtitle(self, subtitle: Subtitle):
         data = subtitle.__dict__.copy()
@@ -53,6 +66,13 @@ class dubbingDatasetUtils:
     def get_project_by_id(self, id: int):
         return Project(**self.projectTable.find_one(id=id))
 
+    # 查找所有字幕项目关联，返回 SubtitleProject 实例列表
+    def get_all_subtitle_projects(self):
+        return [SubtitleProject(**item) for item in self.subtileProjectTable.all()]
+
+    def get_subtitle_project_by_id(self, id: int):
+        return SubtitleProject(**self.subtileProjectTable.find_one(id=id))
+    
     # 根据项目id查找字幕，返回 Subtitle 实例列表
     def get_subtitles_by_project_id(self, project_id: int):
         return [Subtitle(**item) for item in self.subtitleTable.find(project_id=project_id)]

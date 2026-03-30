@@ -251,7 +251,7 @@
               <property name="frameShadow">
                <enum>QFrame::Raised</enum>
               </property>
-              <layout class="QVBoxLayout" name="verticalLayout_5">
+              <layout class="QVBoxLayout" name="verticalLayout_5" stretch="0,0">
                <property name="spacing">
                 <number>2</number>
                </property>
@@ -272,11 +272,25 @@
                 </widget>
                </item>
                <item>
-                <widget class="PushButton" name="extractBtn">
-                 <property name="text">
-                  <string>开始标注</string>
+                <layout class="QHBoxLayout" name="horizontalLayout" stretch="1,0">
+                 <property name="spacing">
+                  <number>20</number>
                  </property>
-                </widget>
+                 <item>
+                  <widget class="PushButton" name="extractBtn">
+                   <property name="text">
+                    <string>开始标注</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="PushButton" name="editBtn">
+                   <property name="text">
+                    <string>开始标注</string>
+                   </property>
+                  </widget>
+                 </item>
+                </layout>
                </item>
               </layout>
              </widget>

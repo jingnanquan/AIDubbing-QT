@@ -1,7 +1,7 @@
 import sys
 
 from PyQt5.QtCore import Qt, QUrl, QEvent, pyqtSignal, QSizeF
-from PyQt5.QtGui import QIcon, QPainter, QBrush
+from PyQt5.QtGui import QPainter, QBrush
 from PyQt5.QtMultimedia import QMediaContent, QMediaPlayer
 from PyQt5.QtMultimediaWidgets import QGraphicsVideoItem
 from PyQt5.QtWidgets import (QPushButton,

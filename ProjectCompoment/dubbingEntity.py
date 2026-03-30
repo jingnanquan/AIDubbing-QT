@@ -32,6 +32,16 @@ class Project:
         self.target_video_path = target_video_path  # 目标视频路径（必须）
         self.update_time = update_time
 
+class SubtitleProject:
+    def __init__(self, id: int = None, projectname: str = '',
+                 subtitle_path: str = '',
+                 update_time: str = ''):
+        self.id = id  # 自增主键
+        self.projectname = projectname  # 外键，绑定project主键
+        self.subtitle_path = subtitle_path  # 字幕路径（必须）
+        self.update_time = update_time
+
+
 
 class Subtitle:
     def __init__(self, id: int = None, project_id: int = '',

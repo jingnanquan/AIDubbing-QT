@@ -46,10 +46,12 @@ class RoleExtractAPI():
             # self.global_gemini_client = genai.Client(api_key = API_KEY_GEMINI, http_options = HttpOptions(timeout=300 * 1000))  # 通过中转服务器，调用gemini
         if not d_status:
             print("==deepseek==")
-            self.global_deepseek_client = OpenAI(
-                api_key=decrypt_string(API_KEY_DEEPSEEK, "AIDubbing"),
-                base_url="https://api.deepseek.com",
-            )
+            # self.global_deepseek_client = OpenAI(
+            #     api_key=decrypt_string(API_KEY_DEEPSEEK, "AIDubbing"),
+            #     base_url="https://api.deepseek.com",
+            # )
+
+            self.global_deepseek_client = None
         self.gemini_status = True
         self.deepseek_status = True
 

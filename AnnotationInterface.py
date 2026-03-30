@@ -1,4 +1,4 @@
-from qfluentwidgets import RadioButton, LineEdit, BodyLabel
+from qfluentwidgets import RadioButton, LineEdit, BodyLabel, InfoBar, InfoBarPosition
 
 # from Compoment.DubbingParamWindows2 import language_code
 from Config import ROLE_ANNO_FOLDER
@@ -94,6 +94,8 @@ class AnnotationInterface(Ui_Annotation, QFrame):
         self.font.setWeight(75)
         self.scrollArea.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.extractBtn.setFixedHeight(40)
+        self.editBtn.setFixedHeight(40)
+
         self.scrollArea.setStyleSheet(
             """ #scrollArea{ border: None; background: transparent; } #scrollAreaWidgetContents_2{ background: transparent; } """)
 
@@ -110,7 +112,7 @@ class AnnotationInterface(Ui_Annotation, QFrame):
         self.role_info_edit = DraggableTextEdit()
         self.role_info_edit.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.role_info_edit.setPlaceholderText(
-            "请在这里填写主角信息，包含角色名（必填）、角色特征、人物关系、参与的情节等")
+            "可在这里填写主角信息，包含角色名（可选）、角色特征、人物关系、参与的情节等")
         self.role_info_edit.setFont(QFont("Microsoft YaHei", 12))
         self.role_info_edit.setStyleSheet("""
                     QTextEdit {
@@ -131,7 +133,10 @@ class AnnotationInterface(Ui_Annotation, QFrame):
 
         # wire button
         self.extractBtn.clicked.connect(self._on_extract_clicked)
+        self.editBtn.clicked.connect(self._on_edit_clicked)
         self.operate_container.setMinimumHeight(120)
+
+        self.subtitle_editor = None
 
 
     def _on_general_finished(self, result: dict):
@@ -143,6 +148,12 @@ class AnnotationInterface(Ui_Annotation, QFrame):
         # QMessageBox.information(self, "提示", result["msg"])
         dlg = PrettyPathDialog("任务完成!", result["msg"], result["result_path"], parent=self)
         dlg.exec_()
+
+    def _on_edit_clicked(self):
+        SubtitleInterface = _get_attr("ReviewInterface.SubtitleEditorInterface", "SubtitleEditorInterface")
+        self.subtitle_editor = SubtitleInterface()
+        self.subtitle_editor.setWindowModality(Qt.ApplicationModal)
+        self.subtitle_editor.show()  # 显示
 
     def _on_extract_clicked(self):
 
@@ -185,18 +196,43 @@ class AnnotationInterface(Ui_Annotation, QFrame):
         output_root = os.path.join(ROLE_ANNO_FOLDER, f"批量角色标注-{os.path.splitext(os.path.basename(video_paths[0]))[0]}{timestamp}")
 
         if self.annotation_option == 0:
-            self.worker = BatchAnnotationWorker(pairs, role_info, output_root, self.extraOutputBtn.isChecked())
-        elif self.annotation_option == 1:
-            annotation_module = _load_module("ThreadWorker.AnnotationExperiment")
-            WorkerCls = getattr(annotation_module, "BatchAnnotationWorker_with_AudioFeature")
-            self.worker = WorkerCls(
-                pairs,
-                role_info,
-                output_root,
-                self.extraOutputBtn.isChecked(),
-                if_translate=self.language_input.text() != self.sub_language_input.text(),
-                language=self.language_input.text()
+            InfoBar.warning(
+                title='提示',
+                content="此选项已淘汰",
+                orient=Qt.Horizontal,
+                isClosable=True,
+                position=InfoBarPosition.TOP,
+                duration=2000,
+                parent=self
             )
+
+            if isinstance(self.loading_msg, QMessageBox):
+                self.loading_msg.hide()
+            return
+            # self.worker = BatchAnnotationWorker(pairs, role_info, output_root, self.extraOutputBtn.isChecked())
+        elif self.annotation_option == 1:
+            InfoBar.warning(
+                title='提示',
+                content="此选项已淘汰",
+                orient=Qt.Horizontal,
+                isClosable=True,
+                position=InfoBarPosition.TOP,
+                duration=2000,
+                parent=self
+            )
+            if isinstance(self.loading_msg, QMessageBox):
+                self.loading_msg.hide()
+            return
+            # annotation_module = _load_module("ThreadWorker.AnnotationExperiment")
+            # WorkerCls = getattr(annotation_module, "BatchAnnotationWorker_with_AudioFeature")
+            # self.worker = WorkerCls(
+            #     pairs,
+            #     role_info,
+            #     output_root,
+            #     self.extraOutputBtn.isChecked(),
+            #     if_translate=self.language_input.text() != self.sub_language_input.text(),
+            #     language=self.language_input.text()
+            # )
         elif self.annotation_option == 2:
             annotation_module = _load_module("ThreadWorker.AnnotationExperiment")
             WorkerCls = getattr(annotation_module, "BatchAnnotationWorker_with_AudioFeature_no_split")

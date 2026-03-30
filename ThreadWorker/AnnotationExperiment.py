@@ -1,3 +1,4 @@
+import datetime
 import os
 import re
 import traceback
@@ -6,6 +7,8 @@ import shutil
 
 from PyQt5.QtCore import QThread, pyqtSignal
 
+from ProjectCompoment.dubbingDatasetUtils import dubbingDatasetUtils
+from ProjectCompoment.dubbingEntity import SubtitleProject
 from Service.generalUtils import time_str_to_ms, ms_to_time_str
 from Service.subtitleUtils import parse_subtitle_uncertain
 from Service.videoUtils import get_audio_np_from_video, _probe_video_duration_ms
@@ -569,6 +572,9 @@ class BatchAnnotationWorker_with_AudioFeature_no_split(QThread):
                  if_translate: bool = False, language: str = ""):
         super().__init__()
         self.pairs = pairs
+        self.timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        self.projectname = f"{os.path.splitext(os.path.basename(self.pairs[0][0]))[0]}-{self.timestamp}"
+        print(self.projectname)
         self.role_info_text = role_info_text
         self.output_root_dir = output_root_dir
         self.max_workers = max_workers
@@ -831,17 +837,24 @@ class BatchAnnotationWorker_with_AudioFeature_no_split(QThread):
                     for vname, sname, err, tb in failed:
                         f.write(f"视频: {vname}  字幕: {sname}\n错误: {err}\n{tb}\n---\n")
 
+            dubbingDatasetConn = dubbingDatasetUtils.getInstance()
+            # timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+            # projectname = f"{os.path.splitext(os.path.basename(self.pairs[0][0]))[0]}-{timestamp}"
+            project_id = dubbingDatasetConn.insert_subtitle_project(SubtitleProject(projectname=self.projectname, subtitle_path=self.srt_dir, update_time=self.timestamp))
             msg = f"批量角色标注完成，成功 {total - len(failed)}，失败 {len(failed)}。"
             self.finished.emit({
                 "msg": msg,
-                "result_path": self.output_root_dir
+                "result_path": self.output_root_dir,
+                "srt_path": self.srt_dir
             })
+
         except Exception as e:
             print(e)
             print(traceback.format_exc())
             self.finished.emit({
                 "msg": f"发生错误: {e}",
-                "result_path": self.output_root_dir if os.path.isdir(self.output_root_dir) else ""
+                "result_path": self.output_root_dir if os.path.isdir(self.output_root_dir) else "",
+                "srt_path": self.srt_dir if os.path.isdir(self.srt_dir) else ""
             })
 
 

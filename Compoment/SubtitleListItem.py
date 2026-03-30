@@ -1,12 +1,6 @@
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QStandardItemModel, QFont
-from PyQt5.QtWidgets import QWidget, QFileDialog, QFrame, QVBoxLayout, QLabel, QPushButton, QSizePolicy, QHBoxLayout, \
-    QInputDialog, QComboBox
-
-
-'''
-应该重命名为字幕列表项
-'''
+from PyQt5.QtWidgets import QFrame, QVBoxLayout, QLabel, QHBoxLayout, QComboBox
 
 
 class SubtitleListItem(QFrame):
