@@ -4,12 +4,12 @@ import os
 from functools import lru_cache
 from importlib import import_module
 
-from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal
-from PyQt5.QtGui import QPixmap, QImage
+from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal, QUrl
+from PyQt5.QtGui import QPixmap, QImage, QDesktopServices
 from PyQt5.QtWidgets import (QWidget, QFrame, QVBoxLayout, QMessageBox,
                              QApplication, QLabel, QPushButton, QScrollArea,
                              QGridLayout, QHBoxLayout)
-from qfluentwidgets import SegmentedWidget, ProgressRing
+from qfluentwidgets import SegmentedWidget, ProgressRing, HyperlinkButton
 
 from UI.Ui_project import Ui_Project
 
@@ -478,17 +478,260 @@ class ProjectCard(QFrame):
             *{
                 font-family: "Microsoft YaHei UI";
             }
-            QPushButton {
+            #detail_btn {
                 background: #0078d4;
                 color: white;
                 border: none;
                 border-radius: 6px;
                 padding: 6px 12px;
             }
-            QPushButton:hover {
+            #detail_btn:hover {
                 background: #106ebe;
             }
-            QPushButton:pressed {
+            #detail_btn:pressed {
+                background: #005a9e;
+            }
+            #open_folder_btn {
+                background: #f0f0f0;
+                color: #666;
+                border: 1px solid #ddd;
+                border-radius: 6px;
+                padding: 6px 12px;
+            }
+            #open_folder_btn:hover {
+                background: #e8e8e8;
+                border-color: #ccc;
+            }
+            #open_folder_btn:pressed {
+                background: #e0e0e0;
+            }
+        """)
+
+        self.setAutoFillBackground(True)
+        self.setFixedSize(card_width, 370)
+
+        layout = QVBoxLayout(self)
+        margin = 12
+        layout.setContentsMargins(margin, margin, margin, margin)
+        layout.setSpacing(8)
+
+        # 项目图片
+        self.image_label = QLabel(self)
+        self.image_label.setFixedHeight(260)
+        self.image_label.setAlignment(Qt.AlignCenter)
+        self.image_label.setStyleSheet("""
+            QLabel {
+                background: #f5f5f5;
+                border-radius: 8px;
+            }
+        """)
+
+        # 设置占位图
+        placeholder_pixmap = QPixmap(':/qfluentwidgets/images/logo.png')
+        if not placeholder_pixmap.isNull():
+            self.image_label.setPixmap(placeholder_pixmap.scaled(
+                200, 200, Qt.KeepAspectRatio, Qt.SmoothTransformation
+            ))
+
+        layout.addWidget(self.image_label)
+
+        # 项目名称
+        self.name_label = QLabel(getattr(project, "projectname", "未命名项目"), self)
+        font = self.name_label.font()
+        font.setPointSize(11)
+        font.setBold(True)
+        self.name_label.setFont(font)
+        self.name_label.setStyleSheet("color: #333;")
+        layout.addWidget(self.name_label)
+
+        # 时间戳
+        timestamp = getattr(project, "update_time", "2025/01/01 00:00:00")
+        self.time_label = QLabel(str(timestamp), self)
+        font2 = self.time_label.font()
+        font2.setPointSize(9)
+        self.time_label.setFont(font2)
+        self.time_label.setStyleSheet("color: #888;")
+        layout.addWidget(self.time_label)
+
+        # 按钮布局
+        button_layout = QHBoxLayout()
+        button_layout.setSpacing(8)
+
+        # 打开文件夹按钮
+        self.open_folder_btn = QPushButton("📁", self)
+        self.open_folder_btn.setObjectName("open_folder_btn")
+        self.open_folder_btn.setFixedSize(32, 32)  # 设置固定大小，比detail_btn小
+        self.open_folder_btn.setToolTip("打开文件夹")
+        self.open_folder_btn.clicked.connect(self.open_folder)
+
+        # 详情按钮
+        self.detail_btn = QPushButton("查看详情", self)
+        self.detail_btn.setObjectName("detail_btn")
+        if project_type == "subtitle":
+            self.detail_btn.setText("标注字幕")
+        self.detail_btn.setFixedHeight(32)
+
+        # 将按钮添加到布局，打开文件夹按钮在左侧
+
+        button_layout.addWidget(self.detail_btn)
+        button_layout.addWidget(self.open_folder_btn)
+
+        layout.addLayout(button_layout)
+
+        self.detail_btn.clicked.connect(self.open_detail)
+        self.detail_page = None
+
+        # 延迟加载图片
+        QTimer.singleShot(20, self.load_project_image)
+
+    def open_folder(self):
+        """打开项目文件夹"""
+        try:
+            if self.project_type == "dubbing":
+                path = getattr(self.project, "target_video_path", None)
+            else:  # subtitle
+                path = getattr(self.project, "subtitle_path", None)
+
+            if not path:
+                QMessageBox.warning(self, "提示", "找不到文件路径")
+                return
+
+            if not os.path.exists(path):
+                QMessageBox.warning(self, "提示", f"路径不存在:\n{path}")
+                return
+
+
+            if os.path.exists(path):
+                if os.path.isdir(path):
+                    # 如果是文件夹，直接打开
+                    QDesktopServices.openUrl(QUrl.fromLocalFile(path))
+                elif os.path.isfile(path):
+                    # 如果是文件，打开文件所在文件夹并定位到该文件
+                    # folder_path = os.path.dirname(path)
+                    # QDesktopServices.openUrl(QUrl.fromLocalFile(folder_path))
+                    # 在 Windows 上，可以使用 explorer.exe 来定位文件
+                    print(sys.platform)
+                    if sys.platform == "win32":
+                        os.system(f'explorer /select,"{path}"')
+            else:
+                print("Path does not exist")
+
+        except Exception as e:
+            print(f"打开文件夹时出错: {e}")
+            QMessageBox.warning(self, "错误", f"打开文件夹失败:\n{str(e)}")
+
+    def load_project_image(self):
+        """延迟加载项目图片"""
+        if self.image_loaded:
+            return
+
+        try:
+            pixmap = None
+
+            # 尝试从图片路径加载
+            if hasattr(self.project, "image_path") and self.project.image_path:
+                if os.path.exists(self.project.image_path):
+                    pixmap = QPixmap(self.project.image_path)
+
+            # 如果图片不存在，尝试从视频加载第一帧
+            if (pixmap is None or pixmap.isNull()) and hasattr(self.project, "original_video_path"):
+                if self.project.original_video_path and os.path.exists(self.project.original_video_path):
+                    pixmap = get_first_pixmap(self.project.original_video_path)
+
+            # 如果都没有，使用默认图片
+            if pixmap is None or pixmap.isNull():
+                pixmap = QPixmap(':/qfluentwidgets/images/logo.png')
+
+            if not pixmap.isNull():
+                # 缩放并设置图片
+                scaled_pixmap = pixmap.scaled(
+                    self.image_label.width() - 4,  # 留出边距
+                    self.image_label.height() - 4,
+                    Qt.KeepAspectRatioByExpanding,
+                    Qt.SmoothTransformation
+                )
+                self.image_label.setPixmap(scaled_pixmap)
+                self.image_loaded = True
+
+        except Exception as e:
+            print(f"加载项目图片失败: {e}")
+
+    def open_detail(self):
+        """打开项目详情"""
+        loading_msg = QMessageBox(self)
+        loading_msg.setWindowTitle("请稍候")
+
+        if self.project_type == "dubbing":
+            loading_msg.setText("正在加载配音室，请稍候...")
+            loading_msg.show()
+            QApplication.processEvents()
+
+            from ProjectCompoment.CutStudioPage import CutStudioPage
+            self.detail_page = CutStudioPage(self.project)
+            loading_msg.hide()
+            self.detail_page.show()
+
+        elif self.project_type == "subtitle":
+            loading_msg.setText("正在加载字幕标注界面，请稍候...")
+            loading_msg.show()
+            QApplication.processEvents()
+
+            try:
+                SubtitleInterface = _get_attr("ReviewInterface.SubtitleEditorInterfaceExpr2", "SubtitleEditorInterface")
+                self.subtitle_editor = SubtitleInterface()
+                self.subtitle_editor.setWindowModality(Qt.ApplicationModal)
+                self.subtitle_editor.set_srt_paths([self.project.subtitle_path])
+                self.subtitle_editor.show()  # 显示
+                # from AnnotationInterface import AnnotationInterface
+                # self.detail_page = AnnotationInterface(self.project)
+                loading_msg.hide()
+
+            except ImportError:
+                loading_msg.hide()
+                QMessageBox.information(self, "提示", "字幕标注功能开发中...")
+
+    def resizeEvent(self, event):
+        """重设大小事件"""
+        super().resizeEvent(event)
+
+        # 如果图片已加载，重新缩放
+        if self.image_loaded and hasattr(self, 'original_pixmap'):
+            scaled_pixmap = self.original_pixmap.scaled(
+                self.image_label.width() - 4,
+                self.image_label.height() - 4,
+                Qt.KeepAspectRatioByExpanding,
+                Qt.SmoothTransformation
+            )
+            self.image_label.setPixmap(scaled_pixmap)
+
+class ProjectCard_cast(QFrame):
+    def __init__(self, project, project_type="dubbing", parent=None):
+        super().__init__(parent)
+        self.setObjectName("ProjectCard")
+        self.project = project
+        self.project_type = project_type
+        self.image_loaded = False
+
+        self.setStyleSheet("""
+            ProjectCard {
+                border-radius: 12px;
+                background: #ffffff;
+                border: 1px solid #e0e0e0;
+            }
+            *{
+                font-family: "Microsoft YaHei UI";
+            }
+            #detail_btn {
+                background: #0078d4;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 6px 12px;
+            }
+            #detail_btn:hover {
+                background: #106ebe;
+            }
+            #detail_btn:pressed {
                 background: #005a9e;
             }
         """)
@@ -541,6 +784,7 @@ class ProjectCard(QFrame):
 
         # 详情按钮
         self.detail_btn = QPushButton("查看详情", self)
+        self.detail_btn.setObjectName("detail_btn")
         if project_type == "subtitle":
             self.detail_btn.setText("标注字幕")
         self.detail_btn.setFixedHeight(32)
@@ -609,7 +853,7 @@ class ProjectCard(QFrame):
             QApplication.processEvents()
 
             try:
-                SubtitleInterface = _get_attr("ReviewInterface.SubtitleEditorInterface", "SubtitleEditorInterface")
+                SubtitleInterface = _get_attr("ReviewInterface.SubtitleEditorInterfaceExpr2", "SubtitleEditorInterface")
                 self.subtitle_editor = SubtitleInterface()
                 self.subtitle_editor.setWindowModality(Qt.ApplicationModal)
                 self.subtitle_editor.set_srt_paths([self.project.subtitle_path])

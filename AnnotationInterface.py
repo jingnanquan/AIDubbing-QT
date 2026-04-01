@@ -112,7 +112,7 @@ class AnnotationInterface(Ui_Annotation, QFrame):
         self.role_info_edit = DraggableTextEdit()
         self.role_info_edit.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.role_info_edit.setPlaceholderText(
-            "可在这里填写主角信息，包含角色名（可选）、角色特征、人物关系、参与的情节等")
+            "可在这里填写主角信息（非必需），包含角色名、角色特征、人物关系、参与的情节等")
         self.role_info_edit.setFont(QFont("Microsoft YaHei", 12))
         self.role_info_edit.setStyleSheet("""
                     QTextEdit {
@@ -175,7 +175,7 @@ class AnnotationInterface(Ui_Annotation, QFrame):
         dlg.exec_()
 
     def _on_edit_clicked(self):
-        SubtitleInterface = _get_attr("ReviewInterface.SubtitleEditorInterface", "SubtitleEditorInterface")
+        SubtitleInterface = _get_attr("ReviewInterface.SubtitleEditorInterfaceExpr2", "SubtitleEditorInterface")
         self.subtitle_editor = SubtitleInterface()
         self.subtitle_editor.setWindowModality(Qt.ApplicationModal)
         self.subtitle_editor.show()  # 显示

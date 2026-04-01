@@ -260,8 +260,13 @@ class SettingInterface(QFrame):
         link_layout = QHBoxLayout()
         link_layout.setSpacing(10)
 
+        # github_btn = HyperlinkButton(
+        #     url="https://github.com/jingnanquan/AIDubbing-QT",
+        #     text="GitHub"
+        # )
+
         github_btn = HyperlinkButton(
-            url="https://github.com/jingnanquan/AIDubbing-QT",
+            url="https://github.com/",
             text="GitHub"
         )
         link_layout.addWidget(github_btn)

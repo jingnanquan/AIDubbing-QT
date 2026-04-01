@@ -4,6 +4,7 @@ import sys
 
 from functools import lru_cache
 from importlib import import_module
+from typing import Optional
 
 from PyQt5 import sip
 from PyQt5.QtCore import (
@@ -20,9 +21,18 @@ from PyQt5.QtMultimediaWidgets import QGraphicsVideoItem
 
 from qfluentwidgets.components.widgets.frameless_window import FramelessWindow
 
-from Compoment.SubtitleListItemEdit import SubtitleListItemEdit
+from ReviewInterface.SubtitleListItemEditExpr2 import SubtitleListItemEdit
 from UI.Ui_subtitleEdit import Ui_SubtitleEdit
 from Config import env
+
+# ─────────────────────────────────────────────
+#  分批渲染参数
+#  CHUNK_SIZE   : 每帧渲染的 widget 数量
+#  CHUNK_DELAY  : 每帧间隔（ms），设为 0 则尽快渲染但仍让 Qt 处理事件
+# ─────────────────────────────────────────────
+_CHUNK_SIZE  = 20
+_CHUNK_DELAY = 0
+
 
 @lru_cache(maxsize=None)
 def _load_module(path: str):
@@ -32,44 +42,43 @@ def _load_module(path: str):
 def _get_attr(module_path: str, attr_name: str):
     return getattr(_load_module(module_path), attr_name)
 
-# 参考 VideoPlayWidget 实现的 GraphicsVideoItem
+
+# ─────────────────────────────────────────────
+#  视频播放相关（未改动）
+# ─────────────────────────────────────────────
+
 class GraphicsVideoItem(QGraphicsVideoItem):
     """ Graphics video item """
 
     def paint(self, painter, option, widget=None):
         painter.setBrush(QBrush(Qt.black))
-        # 填充整个视频项区域
         painter.drawRect(self.boundingRect())
-
         painter.setCompositionMode(QPainter.CompositionMode_Difference)
-        # 先调用基类方法绘制原始视频
         super().paint(painter, option, widget)
 
 
-# 格式化时间工具函数
 def _format_time(ms: int) -> str:
     if ms is None or ms < 0:
         ms = 0
-    hours = ms // (3600 * 1000)
-    minutes = (ms % (3600 * 1000)) // (60 * 1000)
-    seconds = (ms % (60 * 1000)) // 1000
+    hours        = ms // (3600 * 1000)
+    minutes      = (ms % (3600 * 1000)) // (60 * 1000)
+    seconds      = (ms % (60 * 1000)) // 1000
     milliseconds = ms % 1000
     return f"{hours:02}:{minutes:02}:{seconds:02},{milliseconds:03}"
 
 
-# 统一的 QtMedia 播放后端（参考 VideoPlayerWidget）
 class _QtMediaBackend(QObject):
     duration_changed = pyqtSignal(int)
     position_changed = pyqtSignal(int)
-    state_changed = pyqtSignal(QMediaPlayer.State)
+    state_changed    = pyqtSignal(QMediaPlayer.State)
 
     def __init__(self, parent: QWidget):
         super().__init__(parent)
         self._parent = parent
         self.mediaPlayer = QMediaPlayer(None, QMediaPlayer.VideoSurface)
-        self.videoItem = GraphicsVideoItem()
-        self.scene = QGraphicsScene(self)
-        self.view = QGraphicsView(self.scene)
+        self.videoItem   = GraphicsVideoItem()
+        self.scene       = QGraphicsScene(self)
+        self.view        = QGraphicsView(self.scene)
         self.view.setFrameShape(QFrame.NoFrame)
         self.view.setAlignment(Qt.AlignCenter)
         self.view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -82,12 +91,11 @@ class _QtMediaBackend(QObject):
         self.scene.addItem(self.videoItem)
         self.mediaPlayer.setVideoOutput(self.videoItem)
 
-        self._file_path = ""
-        self._position_timer = QTimer(self)
+        self._file_path       = ""
+        self._position_timer  = QTimer(self)
         self._position_timer.setInterval(100)
         self._position_timer.timeout.connect(self._emit_position)
 
-        # 绑定信号
         self.mediaPlayer.durationChanged.connect(self.duration_changed.emit)
         self.mediaPlayer.stateChanged.connect(self.state_changed.emit)
         self.mediaPlayer.error.connect(self._handle_error)
@@ -97,7 +105,6 @@ class _QtMediaBackend(QObject):
             pass
 
     def _on_native_size_changed(self, size: QSizeF):
-        """适配视频原生尺寸"""
         try:
             if size and size.width() > 0 and size.height() > 0:
                 self.videoItem.setSize(size)
@@ -107,7 +114,6 @@ class _QtMediaBackend(QObject):
             pass
 
     def _fit_video_in_view(self):
-        """保持宽高比适配视频"""
         try:
             bounds = self.videoItem.boundingRect()
             if not bounds.isEmpty():
@@ -117,112 +123,91 @@ class _QtMediaBackend(QObject):
             pass
 
     def _emit_position(self):
-        """发射当前播放位置信号"""
         self.position_changed.emit(self.mediaPlayer.position())
 
     def _handle_error(self):
-        """处理播放错误"""
         QMessageBox.critical(self._parent, "播放错误", self.mediaPlayer.errorString())
 
     def set_video_widget(self, widget: QWidget):
-        """将视频视图嵌入到指定控件"""
         if widget.layout() is None:
             layout = QVBoxLayout(widget)
             layout.setContentsMargins(0, 0, 0, 0)
         else:
             layout = widget.layout()
-
-        # 清空原有布局
         for i in reversed(range(layout.count())):
             layout.itemAt(i).widget().deleteLater()
-
         layout.addWidget(self.view)
 
     def open(self, file_path: str) -> int:
-        """打开视频文件"""
         self._file_path = file_path
         self.mediaPlayer.stop()
         self.mediaPlayer.setMedia(QMediaContent(QUrl.fromLocalFile(file_path)))
-        self.noplay = True
-
-        # 启动位置轮询定时器
         if not self._position_timer.isActive():
             self._position_timer.start()
-
-        # 等待时长加载（简易等待，实际可通过信号异步处理）
-        # QTimer.singleShot(1000, lambda: self.duration_changed.emit(self.mediaPlayer.duration()))
-        QTimer.singleShot(1000, lambda: self.play())
+        # QTimer.singleShot(500, lambda: self.duration_changed.emit(self.mediaPlayer.duration()))
         # self.play()
+
+        QTimer.singleShot(1000, lambda: self.play())
         return self.mediaPlayer.duration()
 
     def play(self):
-        """播放"""
         self.mediaPlayer.play()
         if not self._position_timer.isActive():
             self._position_timer.start()
 
     def pause(self):
-        """暂停"""
         self.mediaPlayer.pause()
 
     def stop(self):
-        """停止"""
         self.mediaPlayer.stop()
         self._position_timer.stop()
 
     def seek(self, ms: int):
-        """跳转到指定时间"""
         ms = max(0, int(ms))
         if self.mediaPlayer.duration() > 0:
             ms = min(ms, self.mediaPlayer.duration())
         self.mediaPlayer.setPosition(ms)
 
     def duration(self) -> int:
-        """获取视频时长"""
         return int(self.mediaPlayer.duration() or 0)
 
     def position(self) -> int:
-        """获取当前播放位置"""
         return int(self.mediaPlayer.position() or 0)
 
     def is_playing(self) -> bool:
-        """是否正在播放"""
         return self.mediaPlayer.state() == QMediaPlayer.PlayingState
 
     def resize_view(self):
-        """调整视频视图大小"""
         self._fit_video_in_view()
 
 
-# 字幕项构建线程
+# ─────────────────────────────────────────────
+#  SubtitleItemBuilder —— 已废弃，保留供兼容
+#  实际渲染改为主线程分批渲染（见 _rebuild_subtitle_items_batch）
+# ─────────────────────────────────────────────
+
 class SubtitleItemBuilder(QThread):
-    finished = pyqtSignal(list)  # 传递构建好的控件列表
-    progress = pyqtSignal(int)  # 进度信号
+    """
+    保留此类以保持向后兼容，但主流程已改用主线程分批渲染。
+    Qt 控件必须在主线程创建，子线程创建 widget 是未定义行为。
+    """
+    finished = pyqtSignal(list)
+    progress = pyqtSignal(int)
 
     def __init__(self, subtitles, role_match_list, roles_model):
         super().__init__()
-        self.subtitles = subtitles
+        self.subtitles      = subtitles
         self.role_match_list = role_match_list
-        self.roles_model = roles_model
+        self.roles_model    = roles_model
 
     def run(self):
-        widgets = []
-        total = len(self.subtitles)
-        for i, subtitle in enumerate(self.subtitles):
-            # 构建字幕项控件
-            w = SubtitleListItemEdit(subtitle, self.roles_model)
-            w.set_row(i)
-            w.set_index(i + 1)
-            try:
-                w.roles.setCurrentText(self.role_match_list[i] if i < len(self.role_match_list) else "default")
-            except Exception:
-                pass
-            widgets.append(w)
-            # 发送进度更新
-            self.progress.emit(int((i + 1) / total * 100))
-        # 发送构建完成的控件列表
-        self.finished.emit(widgets)
+        # 子线程不再创建 widget，仅传回原始数据供主线程渲染
+        self.finished.emit([])
 
+
+# ─────────────────────────────────────────────
+#  主界面
+# ─────────────────────────────────────────────
 
 class SubtitleEditorInterface(Ui_SubtitleEdit, FramelessWindow):
 
@@ -232,41 +217,59 @@ class SubtitleEditorInterface(Ui_SubtitleEdit, FramelessWindow):
         self.setupUi(self)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
-        self.subtitlePaths = []
-        self.subtitles = []
-        self.role_match_list = []
-        self._player_backend = None
-        self._position_poll_timer = None
-        self.video_file = ""
-        self.subtitle_text = ""
-        self.subtitle_file_name = ""
-        self.is_dirty = False
-        self._current_subtitle_row = None
-        self.roles_model = QStandardItemModel()
+        self.subtitlePaths          = []
+        self.subtitles              = []
+        self.role_match_list        = []
+        self._player_backend        = None
+        self._position_poll_timer   = None
+        self.video_file             = ""
+        self.subtitle_text          = ""
+        self.subtitle_file_name     = ""
+        self.is_dirty               = False
+        self._current_subtitle_row  = None
+        self.roles_model            = QStandardItemModel()
         self.roles_model.appendRow(QStandardItem("default"))
 
-        # 新增：缓存字幕控件列表，便于增量更新
-        self.subtitle_widgets = []
+        self.subtitle_widgets: list = []
 
-        # 初始化字幕滚动列表和角色列表
+        # 字幕跟随状态
+        self._follow_enabled   = True   # "跟随"按钮开关
+        self._highlighted_row  = -1     # 当前高光的行号，-1 表示无
+
+        # 分批渲染状态
+        self._pending_subtitles: list = []   # 待渲染的原始数据切片
+        self._chunk_timer: QTimer = QTimer(self)
+        self._chunk_timer.setSingleShot(True)
+        self._chunk_timer.setInterval(_CHUNK_DELAY)
+        self._chunk_timer.timeout.connect(self._render_next_chunk)
+        self._loading_label: Optional[QLabel] = None  # 加载中占位提示
+
         self._del_unused_ui()
         self._setup_unfinished_ui()
         self._update_RoleListWidget()
         self.setAcceptDrops(True)
 
-        # 绑定事件
-        self.AddSubBtn.clicked.connect(self.select_subtitle_file)  # 上传字幕文件
-        self.AddVideoBtn.clicked.connect(self.select_video_file)  # 上传视频文件
-        self.AddRoleBtn.clicked.connect(self.add_role_list)  # 添加角色
+        self.AddSubBtn.clicked.connect(self.select_subtitle_file)
+        self.AddVideoBtn.clicked.connect(self.select_video_file)
+        self.AddRoleBtn.clicked.connect(self.add_role_list)
         self.OutputRoleBtn.setText("另存为字幕文件")
-        self.SaveBtn.clicked.connect(self.save_subtitle_file)  # 保存覆盖
-        self.ExportBtn.clicked.connect(self.export_subtitle_file)  # 导出另存为
+        self.SaveBtn.clicked.connect(self.save_subtitle_file)
+        self.ExportBtn.clicked.connect(self.export_subtitle_file)
         self.ExportBtn.setText("另存为字幕文件")
 
         self.BottomPlayBtn.setText("暂停")
         self.BottomPlayBtn.clicked.connect(self.toggle_play_pause)
         self.BottomPositionSlider.sliderMoved.connect(self.on_position_slider_moved)
-        # self.BottomPositionSlider.sliderReleased.connect(self.on_position_slider_released)
+
+        # 字幕跟随按钮（动态创建，挂在播放控件旁）,可以不需要
+        # from qfluentwidgets import PushButton as _PushButton
+        # self._follow_btn = _PushButton("📌 跟随字幕")
+        # self._follow_btn.setCheckable(True)
+        # self._follow_btn.setChecked(True)
+        # self._follow_btn.setFixedHeight(self.BottomPlayBtn.height() or 32)
+        # self._follow_btn.clicked.connect(self._on_follow_btn_clicked)
+        # self._update_follow_btn_style()
+        # self.bottomBarLayout.insertWidget(1, self._follow_btn)
 
         self.SubListWidget.itemClicked.connect(self.show_subtitle_list)
         self.RoleListWidget.itemClicked.connect(self.modify_role_list)
@@ -280,7 +283,6 @@ class SubtitleEditorInterface(Ui_SubtitleEdit, FramelessWindow):
             if env == "dev" and os.path.exists(test_path):
                 self.subtitlePaths.append(test_path)
                 self.SubListWidget.addItem(os.path.basename(self.subtitlePaths[0]))
-
                 self.subtitlePaths.append(os.path.join(self.now_path, "1-英_test.srt"))
                 self.SubListWidget.addItem(os.path.basename(self.subtitlePaths[1]))
                 self.subtitlePaths.append(os.path.join(self.now_path, "1-中.srt"))
@@ -288,16 +290,17 @@ class SubtitleEditorInterface(Ui_SubtitleEdit, FramelessWindow):
                 self.subtitlePaths.append(os.path.join(self.now_path, "1-英.srt"))
                 self.SubListWidget.addItem(os.path.basename(self.subtitlePaths[3]))
                 self.import_role_list(os.path.join(self.now_path, "1-中-角色表-固定.txt"))
-
-        except Exception as e:
+        except Exception:
             pass
 
         self._update_drop_hints()
 
+    # ──────────────────────────────────────────
+    #  resize / dirty
+    # ──────────────────────────────────────────
+
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        # self._reposition_video_hint()
-        # 调整视频视图大小
         if self._player_backend:
             self._player_backend.resize_view()
 
@@ -318,19 +321,18 @@ class SubtitleEditorInterface(Ui_SubtitleEdit, FramelessWindow):
         except Exception:
             pass
 
+    # ──────────────────────────────────────────
+    #  视频播放器
+    # ──────────────────────────────────────────
+
     def _init_video_player(self):
-        """初始化视频播放器（参考 VideoPlayerWidget）"""
         if self.CustomVideoWidget.layout() is None:
             self.CustomVideoWidget.setLayout(QVBoxLayout())
         self.CustomVideoWidget.layout().setContentsMargins(0, 0, 0, 0)
-
-        # 初始化 Qt 媒体后端
         self._player_backend = _QtMediaBackend(self)
         self._player_backend.set_video_widget(self.CustomVideoWidget)
         self._player_backend.duration_changed.connect(self._sync_duration)
         self._player_backend.position_changed.connect(self._on_position_updated)
-
-        # 停止旧的轮询定时器（如果存在）
         if isinstance(self._position_poll_timer, QTimer):
             self._position_poll_timer.stop()
             self._position_poll_timer.deleteLater()
@@ -338,18 +340,15 @@ class SubtitleEditorInterface(Ui_SubtitleEdit, FramelessWindow):
     def select_video_file(self, video_file=""):
         try:
             if not video_file:
-                self.video_file, _ = QFileDialog.getOpenFileName(self, "Select File", "",
-                                                                 "Video Files (*.mp4 *.avi *.mov *.mkv *.flv *.wmv *.mpeg *.mpg *.webm);;All Files (*)")
+                self.video_file, _ = QFileDialog.getOpenFileName(
+                    self, "Select File", "",
+                    "Video Files (*.mp4 *.avi *.mov *.mkv *.flv *.wmv *.mpeg *.mpg *.webm);;All Files (*)"
+                )
             else:
                 self.video_file = video_file
-
-            print(self.video_file)
             if self.video_file:
-                # 初始化播放器
                 if not self._player_backend:
                     self._init_video_player()
-
-                # 打开视频文件
                 self._player_backend.open(self.video_file)
                 self.CustomVideoWidget.setStyleSheet("""#CustomVideoWidget{border: 1px solid #ccc;}""")
                 self._update_drop_hints()
@@ -358,19 +357,18 @@ class SubtitleEditorInterface(Ui_SubtitleEdit, FramelessWindow):
             QMessageBox.warning(self, "提示", str(e))
 
     def _sync_duration(self, duration_ms: int):
-        """同步视频时长到进度条"""
         duration_ms = int(duration_ms or 0)
         self.BottomPositionSlider.setRange(0, max(0, duration_ms))
         self.BottomTimeLabel.setText(_format_time(0))
         self.BottomTimeLabelMax.setText(_format_time(duration_ms))
 
     def _on_position_updated(self, pos: int):
-        """更新播放位置和字幕滚动"""
-        # 避免滑块拖动时更新
         if not self.BottomPositionSlider.isSliderDown():
             self.BottomPositionSlider.setValue(pos)
         self.BottomTimeLabel.setText(_format_time(pos))
-        self._update_SubScroll([pos])
+        # 只在"播放中"且"跟随开关开启"时才滚动
+        if self._follow_enabled and self._player_backend and self._player_backend.is_playing():
+            self._update_SubScroll(pos)
 
     def toggle_play_pause(self):
         if not self._player_backend or not self.video_file:
@@ -384,22 +382,13 @@ class SubtitleEditorInterface(Ui_SubtitleEdit, FramelessWindow):
             self.BottomPlayBtn.setText("暂停")
 
     def on_position_slider_moved(self, pos: int):
-        """滑块拖动时更新时间显示"""
         pos = int(self.BottomPositionSlider.value())
-        # if self._player_backend is not None:
-        self._player_backend.seek(pos)
-        # self.BottomTimeLabel.setText(_format_time(int(pos)))
+        if self._player_backend is not None:
+            self._player_backend.seek(pos)
 
-    # def on_position_slider_released(self):
-    #     """滑块释放时跳转到指定位置"""
-    #     if not self._player_backend:
-    #         return
-    #     pos = int(self.BottomPositionSlider.value())
-    #     self._player_backend.seek(pos)
-    #     # 如果是暂停状态，点击滑块后自动播放
-    #     if not self._player_backend.is_playing():
-    #         self._player_backend.play()
-    #         self.BottomPlayBtn.setText("暂停")
+    # ──────────────────────────────────────────
+    #  UI 初始化
+    # ──────────────────────────────────────────
 
     def _update_RoleListWidget(self):
         self.RoleListWidget.clear()
@@ -407,18 +396,18 @@ class SubtitleEditorInterface(Ui_SubtitleEdit, FramelessWindow):
             self.RoleListWidget.addItem(self.roles_model.item(row).text())
 
     def _setup_unfinished_ui(self):
-        self.SubScroll.setWidgetResizable(True)  # 允许内部控件自适应
+        self.SubScroll.setWidgetResizable(True)
         self.SubScroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
         self.scrollAreaWidgetContents.deleteLater()
         self.SubListContainer = QFrame()
         self.SubListContainer.setObjectName("SubtitleCardContainer")
-
         self.container_layout = QVBoxLayout()
-        self.container_layout.setAlignment(Qt.AlignTop)  # 内容顶部对齐
+        self.container_layout.setAlignment(Qt.AlignTop)
         self.SubListContainer.setLayout(self.container_layout)
         self.SubScroll.setStyleSheet(
-            """ #SubScroll{ border: 1px solid #ccc; background: transparent; } #SubtitleCardContainer{ background: transparent; } """)
-
+            """ #SubScroll{ border: 1px solid #ccc; background: transparent; }
+                #SubtitleCardContainer{ background: transparent; } """
+        )
         self.SubScroll.setWidget(self.SubListContainer)
 
     def _del_unused_ui(self):
@@ -432,13 +421,10 @@ class SubtitleEditorInterface(Ui_SubtitleEdit, FramelessWindow):
         self.OutputRoleBtn.hide()
 
     def select_subtitle_file(self):
-        # Open file dialog to select a file
-        file_names, _ = QFileDialog.getOpenFileNames(self, "Select File", "", "字幕 (*.srt)")  # 限制了只允许srt
-
+        file_names, _ = QFileDialog.getOpenFileNames(self, "Select File", "", "字幕 (*.srt)")
         for file_name in file_names:
             self.subtitlePaths.append(file_name)
             self.SubListWidget.addItem(os.path.basename(file_name))
-            print(self.subtitlePaths)
         self._update_drop_hints()
 
     def _update_drop_hints(self):
@@ -452,22 +438,20 @@ class SubtitleEditorInterface(Ui_SubtitleEdit, FramelessWindow):
             if hasattr(self, "VideoDropHint"):
                 if isinstance(self.VideoDropHint, QLabel) and not sip.isdeleted(self.VideoDropHint):
                     self.VideoDropHint.setAttribute(Qt.WA_TransparentForMouseEvents, True)
-                # self.VideoDropHint.setVisible(not bool(self.video_file))
-                # self._reposition_video_hint()
         except Exception:
             pass
 
+    # ──────────────────────────────────────────
+    #  字幕列表加载（核心优化区域）
+    # ──────────────────────────────────────────
+
     def show_subtitle_list(self, item):
         parse_subtitle_uncertain = _get_attr("Service.subtitleUtils", "parse_subtitle_uncertain")
-        # 获取被点击项的行号（从 0 开始）
         row = self.SubListWidget.row(item)
         print(f"点击了第 {row} 行，内容: {item.text()}")
-        print(self.subtitlePaths[row])
 
-        # 切换前拦截未保存
         if self._current_subtitle_row is not None and row != self._current_subtitle_row:
             if not self.maybe_save():
-                # 取消切换：还原选中项
                 try:
                     self.SubListWidget.setCurrentRow(self._current_subtitle_row)
                 except Exception:
@@ -478,49 +462,97 @@ class SubtitleEditorInterface(Ui_SubtitleEdit, FramelessWindow):
         if not self.subtitles:
             QMessageBox.warning(self, "错误", "字幕文件内容错误！")
             return
-        self.subtitle_file_name = self.subtitlePaths[row]
+
+        self.subtitle_file_name    = self.subtitlePaths[row]
         self._current_subtitle_row = row
         self.mark_clean()
 
         if new_role_list:
             self.role_match_list = copy.deepcopy(new_role_list)
-            self.role_set = set(self.role_match_list)  # 更新外部角色表
+            self.role_set        = set(self.role_match_list)
             for role in self.role_set:
                 if self._isin_role_list(role):
                     continue
                 self.roles_model.appendRow(QStandardItem(role))
             self._update_RoleListWidget()
-        else:
-            # 保留原有角色匹配
-            pass
 
-        # 全量重建（仅切换文件时）
         self._clear_subtitle_items()
         self._rebuild_subtitle_items_batch()
 
     def _clear_subtitle_items(self):
-        """清空字幕控件"""
+        """
+        快速清空所有字幕控件。
+
+        优化：先停止分批定时器，再批量移除 widget。
+        直接调用 deleteLater 即可；不必逐个从 layout 中 removeWidget，
+        因为 layout 会在 widget 析构时自动处理。
+        """
+        # 停止可能正在进行的上一轮分批渲染
+        self._chunk_timer.stop()
+        self._pending_subtitles.clear()
+
+        # 隐藏 loading 标签（如果存在）
+        self._hide_loading_label()
+
+        # 重置高光状态（无需调用 clear_highlight，widget 即将销毁）
+        self._highlighted_row = -1
+
         for w in self.subtitle_widgets:
+            # 先从布局摘除再销毁，避免 layout 频繁计算
+            self.container_layout.removeWidget(w)
             w.deleteLater()
         self.subtitle_widgets.clear()
 
-    def _reindex_subtitles(self):
-        for i, sub in enumerate(self.subtitles):
-            sub["index"] = i + 1
-
     def _rebuild_subtitle_items_batch(self):
-        """批量重建字幕项"""
+        """
+        分批渲染字幕控件（主线程，非阻塞）。
+
+        流程
+        ----
+        1. 对齐 role_match_list 长度
+        2. 显示"加载中…"占位 Label（立即反馈给用户）
+        3. 将所有字幕数据保存到 _pending_subtitles 队列
+        4. 立即渲染首批（_CHUNK_SIZE 条），让用户最快看到内容
+        5. 通过 QTimer 每帧渲染后续批次，保持 UI 响应
+        """
         self._reindex_subtitles()
         if self.subtitles is None:
             self.subtitles = []
 
         # role_match_list 长度对齐
+        default_role = self.roles_model.item(0).text()
         while len(self.role_match_list) < len(self.subtitles):
-            self.role_match_list.append(self.roles_model.item(0).text())
+            self.role_match_list.append(default_role)
         if len(self.role_match_list) > len(self.subtitles):
             self.role_match_list = self.role_match_list[: len(self.subtitles)]
 
-        for i, subtitle in enumerate(self.subtitles):
+        total = len(self.subtitles)
+        if total == 0:
+            return
+
+        # ① 立即显示 loading 占位，消除用户感知的空白等待
+        self._show_loading_label(loaded=0, total=total)
+
+        # ② 准备分批队列（带上 role 信息，打包成 tuple 避免重复索引）
+        self._pending_subtitles = list(enumerate(self.subtitles))
+
+        # ③ 立即触发首批渲染（不等定时器），让内容尽快出现
+        self._render_next_chunk()
+
+    def _render_next_chunk(self):
+        """
+        从 _pending_subtitles 取出一批，创建并挂载控件，
+        然后若队列非空则启动定时器继续渲染下一批。
+        """
+        if not self._pending_subtitles:
+            self._hide_loading_label()
+            return
+
+        total   = len(self.subtitles)
+        chunk   = self._pending_subtitles[:_CHUNK_SIZE]
+        self._pending_subtitles = self._pending_subtitles[_CHUNK_SIZE:]
+
+        for i, subtitle in chunk:
             w = SubtitleListItemEdit(subtitle, self.roles_model)
             w.set_row(i)
             w.set_index(i + 1)
@@ -535,29 +567,67 @@ class SubtitleEditorInterface(Ui_SubtitleEdit, FramelessWindow):
             self.container_layout.addWidget(w)
             self.subtitle_widgets.append(w)
 
+        loaded = len(self.subtitle_widgets)
+
+        if self._pending_subtitles:
+            # 更新进度提示
+            self._update_loading_label(loaded=loaded, total=total)
+            # 调度下一批（interval=0 表示下一个事件循环周期，UI 不阻塞）
+            self._chunk_timer.start()
+        else:
+            # 全部渲染完毕
+            self._hide_loading_label()
+
+    # ── Loading 占位 Label 辅助方法 ──────────────
+
+    def _show_loading_label(self, loaded: int, total: int):
+        """在 container_layout 顶部插入一个加载提示标签"""
+        if self._loading_label is None:
+            self._loading_label = QLabel()
+            self._loading_label.setAlignment(Qt.AlignCenter)
+            self._loading_label.setStyleSheet(
+                "color: #888; font-size: 13px; padding: 8px;"
+            )
+        self._loading_label.setText(f"加载中… 0 / {total} 条")
+        # 插入到布局最前面（index 0），保持其始终在列表顶部可见
+        self.container_layout.insertWidget(0, self._loading_label)
+        self._loading_label.show()
+
+    def _update_loading_label(self, loaded: int, total: int):
+        if self._loading_label is not None:
+            self._loading_label.setText(f"加载中… {loaded} / {total} 条")
+
+    def _hide_loading_label(self):
+        if self._loading_label is not None:
+            self.container_layout.removeWidget(self._loading_label)
+            self._loading_label.hide()
+
+    # ──────────────────────────────────────────
+    #  字幕项增删改（增量更新，不重建全列表）
+    # ──────────────────────────────────────────
+
+    def _reindex_subtitles(self):
+        for i, sub in enumerate(self.subtitles):
+            sub["index"] = i + 1
+
     def on_subtitle_item_changed(self, row: int, data: dict):
         """修改字幕项（增量更新）"""
         row = int(row)
         if row < 0 or row >= len(self.subtitles):
             return
 
-        # 更新数据
         data["index"] = row + 1
         self.subtitles[row].update({
             "index": data.get("index", row + 1),
             "start": data.get("start", self.subtitles[row].get("start", "00:00:00,000")),
-            "end": data.get("end", self.subtitles[row].get("end", "00:00:00,000")),
-            "text": data.get("text", self.subtitles[row].get("text", "")),
+            "end":   data.get("end",   self.subtitles[row].get("end",   "00:00:00,000")),
+            "text":  data.get("text",  self.subtitles[row].get("text",  "")),
         })
         self.role_match_list[row] = data.get("role", self.role_match_list[row])
 
-        # 直接更新控件内容（无需重建）
+        # 用 set_subtitle_silent 批量写入，屏蔽信号防止级联触发
         if 0 <= row < len(self.subtitle_widgets):
-            w = self.subtitle_widgets[row]
-            w.start_edit.setText(data.get("start", w.start_edit.text()))
-            w.end_edit.setText(data.get("end", w.end_edit.text()))
-            w.text_edit.setText(data.get("text", w.text_edit.text()))
-            w.roles.setCurrentText(data.get("role", w.roles.currentText()))
+            self.subtitle_widgets[row].set_subtitle_silent(data)
 
         self.mark_dirty()
 
@@ -566,32 +636,22 @@ class SubtitleEditorInterface(Ui_SubtitleEdit, FramelessWindow):
         row = int(row)
         row = max(0, min(row, len(self.subtitles)))
 
-        # 插入数据
-        base = self.subtitles[row] if row < len(self.subtitles) else (self.subtitles[-1] if self.subtitles else {})
+        base = self.subtitles[row] if row < len(self.subtitles) else (
+            self.subtitles[-1] if self.subtitles else {}
+        )
         new_sub = {
             "index": row + 1,
             "start": base.get("start", "00:00:00,000"),
-            "end": base.get("end", "00:00:00,000"),
-            "text": "",
+            "end":   base.get("end",   "00:00:00,000"),
+            "text":  "",
         }
         self.subtitles.insert(row, new_sub)
         self.role_match_list.insert(row, self.roles_model.item(0).text())
 
-        # 构建新控件
-        w = SubtitleListItemEdit(new_sub, self.roles_model)
-        w.set_row(row)
-        w.set_index(row + 1)
-        w.roles.setCurrentText(self.roles_model.item(0).text())
-        w.changed.connect(self.on_subtitle_item_changed)
-        w.insertAbove.connect(self.on_subtitle_insert_above)
-        w.insertBelow.connect(self.on_subtitle_insert_below)
-        w.deleteRequested.connect(self.on_subtitle_delete)
-
-        # 插入控件到布局
+        w = self._make_widget(new_sub, row)
         self.container_layout.insertWidget(row, w)
         self.subtitle_widgets.insert(row, w)
 
-        # 更新后续控件的索引
         for i in range(row + 1, len(self.subtitle_widgets)):
             self.subtitle_widgets[i].set_row(i)
             self.subtitle_widgets[i].set_index(i + 1)
@@ -601,37 +661,25 @@ class SubtitleEditorInterface(Ui_SubtitleEdit, FramelessWindow):
 
     def on_subtitle_insert_below(self, row: int):
         """插入字幕到指定行下方（增量更新）"""
-        row = int(row)
-        insert_at = row + 1
-        insert_at = max(0, min(insert_at, len(self.subtitles)))
+        row       = int(row)
+        insert_at = max(0, min(row + 1, len(self.subtitles)))
 
-        # 插入数据
         base = self.subtitles[row] if (0 <= row < len(self.subtitles)) else (
-            self.subtitles[-1] if self.subtitles else {})
+            self.subtitles[-1] if self.subtitles else {}
+        )
         new_sub = {
             "index": insert_at + 1,
-            "start": base.get("end", "00:00:00,000"),
-            "end": base.get("end", "00:00:00,000"),
-            "text": "",
+            "start": base.get("end",   "00:00:00,000"),
+            "end":   base.get("end",   "00:00:00,000"),
+            "text":  "",
         }
         self.subtitles.insert(insert_at, new_sub)
         self.role_match_list.insert(insert_at, self.roles_model.item(0).text())
 
-        # 构建新控件
-        w = SubtitleListItemEdit(new_sub, self.roles_model)
-        w.set_row(insert_at)
-        w.set_index(insert_at + 1)
-        w.roles.setCurrentText(self.roles_model.item(0).text())
-        w.changed.connect(self.on_subtitle_item_changed)
-        w.insertAbove.connect(self.on_subtitle_insert_above)
-        w.insertBelow.connect(self.on_subtitle_insert_below)
-        w.deleteRequested.connect(self.on_subtitle_delete)
-
-        # 插入控件到布局
+        w = self._make_widget(new_sub, insert_at)
         self.container_layout.insertWidget(insert_at, w)
         self.subtitle_widgets.insert(insert_at, w)
 
-        # 更新后续控件的索引
         for i in range(insert_at + 1, len(self.subtitle_widgets)):
             self.subtitle_widgets[i].set_row(i)
             self.subtitle_widgets[i].set_index(i + 1)
@@ -645,16 +693,14 @@ class SubtitleEditorInterface(Ui_SubtitleEdit, FramelessWindow):
         if row < 0 or row >= len(self.subtitles):
             return
 
-        # 删除数据
         self.subtitles.pop(row)
         if 0 <= row < len(self.role_match_list):
             self.role_match_list.pop(row)
 
-        # 删除控件
+        self.container_layout.removeWidget(self.subtitle_widgets[row])
         self.subtitle_widgets[row].deleteLater()
         self.subtitle_widgets.pop(row)
 
-        # 更新后续控件的索引
         for i in range(row, len(self.subtitle_widgets)):
             self.subtitle_widgets[i].set_row(i)
             self.subtitle_widgets[i].set_index(i + 1)
@@ -662,16 +708,34 @@ class SubtitleEditorInterface(Ui_SubtitleEdit, FramelessWindow):
 
         self.mark_dirty()
 
+    def _make_widget(self, subtitle: dict, row: int) -> SubtitleListItemEdit:
+        """构建并连接单个 SubtitleListItemEdit 控件"""
+        w = SubtitleListItemEdit(subtitle, self.roles_model)
+        w.set_row(row)
+        w.set_index(row + 1)
+        try:
+            w.roles.setCurrentText(self.role_match_list[row])
+        except Exception:
+            pass
+        w.changed.connect(self.on_subtitle_item_changed)
+        w.insertAbove.connect(self.on_subtitle_insert_above)
+        w.insertBelow.connect(self.on_subtitle_insert_below)
+        w.deleteRequested.connect(self.on_subtitle_delete)
+        return w
+
+    # ──────────────────────────────────────────
+    #  保存 / 导出
+    # ──────────────────────────────────────────
+
     def _collect_subtitles_for_write(self) -> list:
-        # 以 self.subtitles 为准（已在 changed 回写），并附带 role
         out = []
         for i, sub in enumerate(self.subtitles):
             out.append({
                 "index": i + 1,
                 "start": sub.get("start", "00:00:00,000"),
-                "end": sub.get("end", "00:00:00,000"),
-                "text": sub.get("text", ""),
-                "role": self.role_match_list[i] if i < len(self.role_match_list) else "default",
+                "end":   sub.get("end",   "00:00:00,000"),
+                "text":  sub.get("text",  ""),
+                "role":  self.role_match_list[i] if i < len(self.role_match_list) else "default",
             })
         return out
 
@@ -708,9 +772,7 @@ class SubtitleEditorInterface(Ui_SubtitleEdit, FramelessWindow):
         if not self.is_dirty:
             return True
         reply = QMessageBox.question(
-            self,
-            "未保存的修改",
-            "当前字幕有未保存的修改，是否保存？",
+            self, "未保存的修改", "当前字幕有未保存的修改，是否保存？",
             QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel,
         )
         if reply == QMessageBox.Yes:
@@ -724,6 +786,7 @@ class SubtitleEditorInterface(Ui_SubtitleEdit, FramelessWindow):
         if not self.maybe_save():
             event.ignore()
             return
+        self._chunk_timer.stop()
         try:
             if self._player_backend:
                 self._player_backend.stop()
@@ -731,39 +794,114 @@ class SubtitleEditorInterface(Ui_SubtitleEdit, FramelessWindow):
             pass
         super().closeEvent(event)
 
-    def _update_SubScroll(self, msec: list):
+    # ──────────────────────────────────────────
+    #  视频同步滚动字幕
+    # ──────────────────────────────────────────
+
+    def _update_SubScroll(self, pos_ms: int):
+        """
+        二分查找当前播放位置对应的字幕，滚动列表并高光显示。
+
+        复杂度 O(log N)，替代原来的 O(N) 线性遍历，
+        100 ms 调用一次也不会有性能压力。
+        """
+        widgets = self.subtitle_widgets
+        if not widgets:
+            return
+
         time_str_to_ms = _get_attr("Service.generalUtils", "time_str_to_ms")
-        if self.subtitles:
-            index = 0
-            items = self.subtitle_widgets
-            for item in items:
-                try:
-                    start_text = item.start_edit.text().strip()
-                except Exception:
-                    start_text = "00:00:00,000"
-                if time_str_to_ms(start_text) >= msec[0]:
-                    index = items.index(item) + 1
-                    break
-            if index == 0:
-                index = len(items)
-            if index > 3:  # index等于4才会滚动
-                vbar = self.SubScroll.verticalScrollBar()
-                vmax = vbar.maximum()
-                offset = int(((len(items) - index) * 9) / len(items))
-                offset2 = int(offset / 2)
-                offset -= 3
-                animation = QPropertyAnimation(vbar, b"value", self)
-                animation.setDuration(100)  # 动画持续时间（毫秒）
-                animation.setStartValue(vbar.value())  # 起始值
-                animation.setEndValue(((index - offset2) * vmax) / (len(items) + offset))  # 目标值
-                animation.start()
+
+        # 二分查找：找到最后一个 start_ms <= pos_ms 的索引
+        lo, hi, found = 0, len(widgets) - 1, -1
+        while lo <= hi:
+            mid = (lo + hi) // 2
+            try:
+                start_ms = time_str_to_ms(widgets[mid].start_edit.text().strip())
+            except Exception:
+                start_ms = 0
+            if start_ms <= pos_ms:
+                found = mid
+                lo = mid + 1
             else:
-                vbar = self.SubScroll.verticalScrollBar()
-                animation = QPropertyAnimation(vbar, b"value", self)
-                animation.setDuration(100)  # 动画持续时间（毫秒）
-                animation.setStartValue(vbar.value())  # 起始值
-                animation.setEndValue(0)  # 目标值
-                animation.start()
+                hi = mid - 1
+
+        # 更新高光
+        if found != self._highlighted_row:
+            # 清除上一条高光
+            if 0 <= self._highlighted_row < len(widgets):
+                widgets[self._highlighted_row].clear_highlight()
+            # 设置新高光
+            if found >= 0:
+                widgets[found].set_highlight()
+            self._highlighted_row = found
+
+        if found < 0:
+            return
+
+        # 滚动到目标位置（保持目标项在可视区中段）
+        vbar  = self.SubScroll.verticalScrollBar()
+        vmin  = vbar.minimum()
+        vmax  = vbar.maximum()
+        total = len(widgets)
+        if total <= 1 or vmax == 0:
+            return
+
+        # 将目标行映射到滚动条位置，使其出现在视口约 1/3 处
+        target_ratio  = max(0.0, (found - 1) / max(total - 1, 1))
+        target_value  = int(vmin + target_ratio * (vmax - vmin))
+
+        animation = QPropertyAnimation(vbar, b"value", self)
+        animation.setDuration(150)
+        animation.setEasingCurve(QEasingCurve.OutCubic)
+        animation.setStartValue(vbar.value())
+        animation.setEndValue(target_value)
+        animation.start()
+
+    def _on_follow_btn_clicked(self):
+        self._follow_enabled = self._follow_btn.isChecked()
+        self._update_follow_btn_style()
+        # 关闭跟随时清除当前高光
+        if not self._follow_enabled:
+            self._clear_highlight()
+
+    def _update_follow_btn_style(self):
+        if self._follow_enabled:
+            self._follow_btn.setText("📌 跟随字幕：开")
+            self._follow_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #3a9ad9;
+                    color: white;
+                    border: 1px solid #2980b9;
+                    border-radius: 4px;
+                    padding: 4px 10px;
+                    font-weight: bold;
+                }
+                QPushButton:hover { background-color: #2980b9; }
+                QPushButton:pressed { background-color: #1f6fa0; }
+            """)
+        else:
+            self._follow_btn.setText("📌 跟随字幕：关")
+            self._follow_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #bdc3c7;
+                    color: #555;
+                    border: 1px solid #aaa;
+                    border-radius: 4px;
+                    padding: 4px 10px;
+                }
+                QPushButton:hover { background-color: #aab0b4; }
+            """)
+
+    def _clear_highlight(self):
+        """清除所有字幕高光"""
+        widgets = self.subtitle_widgets
+        if 0 <= self._highlighted_row < len(widgets):
+            widgets[self._highlighted_row].clear_highlight()
+        self._highlighted_row = -1
+
+    # ──────────────────────────────────────────
+    #  角色管理
+    # ──────────────────────────────────────────
 
     def _isin_role_list(self, role_name: str):
         for row in range(self.roles_model.rowCount()):
@@ -797,22 +935,20 @@ class SubtitleEditorInterface(Ui_SubtitleEdit, FramelessWindow):
             if file_name:
                 with open(file_name, "r", encoding="utf-8") as f:
                     role_match_list = f.read().split(";")
-                    items = self.subtitle_widgets
-                    print(len(role_match_list))
-                    print(len(items))
-                    if len(role_match_list) < len(items):
-                        raise Exception("角色表错误！")
-                    self.role_match_list = copy.deepcopy(role_match_list)
-                    self.role_set = set(role_match_list)
-                    for role in self.role_set:
-                        if self._isin_role_list(role):
-                            continue
-                        self.roles_model.appendRow(QStandardItem(role))
-                    self._update_RoleListWidget()
-                    for i in range(len(items)):
-                        item = items[i]
-                        if item is not None:
-                            item.roles.setCurrentText(self.role_match_list[i])
+                items = self.subtitle_widgets
+                if len(role_match_list) < len(items):
+                    raise Exception("角色表错误！")
+                self.role_match_list = copy.deepcopy(role_match_list)
+                self.role_set        = set(role_match_list)
+                for role in self.role_set:
+                    if self._isin_role_list(role):
+                        continue
+                    self.roles_model.appendRow(QStandardItem(role))
+                self._update_RoleListWidget()
+                for i in range(len(items)):
+                    item = items[i]
+                    if item is not None:
+                        item.roles.setCurrentText(self.role_match_list[i])
         except Exception as e:
             print(e)
             QMessageBox.warning(self, "警告", "角色表错误！")
@@ -824,44 +960,35 @@ class SubtitleEditorInterface(Ui_SubtitleEdit, FramelessWindow):
             QMessageBox.information(self, "提示", "请先标注并校验角色！")
             return
         folder = QFileDialog.getExistingDirectory(
-            self,
-            "选择导出文件夹",
-            "",
+            self, "选择导出文件夹", "",
             QFileDialog.ShowDirsOnly | QFileDialog.DontResolveSymlinks
         )
         if folder:
-            role_match_list = []
-            for item in items:
-                role_match_list.append(item.roles.currentText())
+            role_match_list = [item.roles.currentText() for item in items]
             self.worker = ExportRolesWorker(self.subtitle_file_name, folder, role_match_list)
             self.worker.finished.connect(self.on_general_task_finished)
             self.worker.start()
 
     def show_role_context_menu(self, pos: QPoint):
-        print("右键点击")
-        # 将局部坐标转为全局坐标（用于 menu 显示位置）
         global_pos = self.RoleListWidget.viewport().mapToGlobal(pos)
-
-        # 获取右键点击处的 item（可选）
         item = self.RoleListWidget.itemAt(pos)
         if item is None:
-            return  # 没有点击到任何 item，直接返回
-
-        # 创建菜单
-        menu = QMenu()
+            return
+        menu    = QMenu()
         action2 = menu.addAction("删除")
-
-        action = menu.exec_(global_pos)  # 弹出菜单并等待选择
-
+        action  = menu.exec_(global_pos)
         if action == action2:
             index = self.RoleListWidget.row(item)
             self.RoleListWidget.takeItem(index)
             self.roles_model.removeRow(index)
 
+    # ──────────────────────────────────────────
+    #  拖放
+    # ──────────────────────────────────────────
+
     def dragEnterEvent(self, event):
         is_video_file = _get_attr("Service.videoUtils", "is_video_file")
         super().dragEnterEvent(event)
-        # print("aaa")
         if event.mimeData().hasUrls():
             decide_url = event.mimeData().urls()[0].toLocalFile()
             if is_video_file(decide_url):
@@ -875,8 +1002,8 @@ class SubtitleEditorInterface(Ui_SubtitleEdit, FramelessWindow):
                         self.VideoDropHint.show()
             else:
                 self.SubListBox.setStyleSheet("""#SubListBox{
-                        background-color: #F8F8F8;
-                        border: 2px dashed #a1bbd7;
+                    background-color: #F8F8F8;
+                    border: 2px dashed #a1bbd7;
                 }""")
                 if hasattr(self, "SubListDropHint"):
                     self.SubListDropHint.setText("松开即可上传字幕")
@@ -897,87 +1024,77 @@ class SubtitleEditorInterface(Ui_SubtitleEdit, FramelessWindow):
         self._update_drop_hints()
 
     def dropEvent(self, event):
-        utils = _load_module("Service.subtitleUtils")
-        get_srt_files_in_folder = getattr(utils, "get_srt_files_in_folder")
-        is_srt_file = getattr(utils, "is_srt_file")
-        is_video_file = _get_attr("Service.videoUtils", "is_video_file")
+        utils                    = _load_module("Service.subtitleUtils")
+        get_srt_files_in_folder  = getattr(utils, "get_srt_files_in_folder")
+        is_srt_file              = getattr(utils, "is_srt_file")
+        is_video_file            = _get_attr("Service.videoUtils", "is_video_file")
         super().dropEvent(event)
         pos = event.pos()
         self.SubListBox.setStyleSheet("""#SubListBox{border: 1px solid #ccc;}""")
         self.CustomVideoWidget.setStyleSheet("""#CustomVideoWidget{border: 1px solid #ccc;}""")
+
         if self.SubListBox.geometry().contains(pos):
-            print("Drop into srt")
-
-            urls = event.mimeData().urls()
-            paths = [url.toLocalFile() for url in urls]
-            print(paths)
-
+            urls      = event.mimeData().urls()
+            paths     = [url.toLocalFile() for url in urls]
             srt_paths = []
             for path in paths:
                 if os.path.isdir(path):
                     srt_paths.extend(get_srt_files_in_folder(path))
                 elif is_srt_file(path):
                     srt_paths.append(path)
-
             for file_name in srt_paths:
                 self.subtitlePaths.append(file_name)
                 self.SubListWidget.addItem(os.path.basename(file_name))
-                print(self.subtitlePaths)
             self._update_drop_hints()
 
         if self.CustomVideoWidget.geometry().contains(pos):
-            print("Drop into video")
-            print(event.mimeData().urls())
             decide_url = event.mimeData().urls()[0].toLocalFile()
             if is_video_file(decide_url):
-                print(decide_url)
                 self.select_video_file(decide_url)
             self._update_drop_hints()
 
-    def set_srt_paths(self, paths:list):
-        utils = _load_module("Service.subtitleUtils")
+    def set_srt_paths(self, paths: list):
+        utils                   = _load_module("Service.subtitleUtils")
         get_srt_files_in_folder = getattr(utils, "get_srt_files_in_folder")
-        is_srt_file = getattr(utils, "is_srt_file")
-        is_video_file = _get_attr("Service.videoUtils", "is_video_file")
-        # paths = [url.toLocalFile() for url in urls]
-        print(paths)
-
+        is_srt_file             = getattr(utils, "is_srt_file")
         srt_paths = []
         for path in paths:
             if os.path.isdir(path):
                 srt_paths.extend(get_srt_files_in_folder(path))
             elif is_srt_file(path):
                 srt_paths.append(path)
-
         for file_name in srt_paths:
             self.subtitlePaths.append(file_name)
             self.SubListWidget.addItem(os.path.basename(file_name))
-            print(self.subtitlePaths)
         self._update_drop_hints()
 
     def on_general_task_finished(self, msg):
         print(msg)
         QMessageBox.information(self, "提示", msg)
 
+    # ──────────────────────────────────────────
+    #  窗口动画
+    # ──────────────────────────────────────────
+
     def show(self):
-        # 创建淡入动画
-        width = 1600
+        width  = 1600
         height = 980
         screen = QDesktopWidget().screenGeometry()
-        x = (screen.width() - width) // 2
+        x = (screen.width()  - width)  // 2
         y = (screen.height() - height) // 2
         self.setGeometry(x, y, width, height)
-        self.setWindowOpacity(0)  # 初始透明
+        self.setWindowOpacity(0)
         self.animation = QPropertyAnimation(self, b"windowOpacity")
-        self.animation.setDuration(300)  # 动画时长（毫秒）
-        self.animation.setStartValue(0)  # 起始透明度
-        self.animation.setEndValue(1)  # 结束透明度
-        self.animation.setEasingCurve(QEasingCurve.InOutQuad)  # 缓动曲线
+        self.animation.setDuration(300)
+        self.animation.setStartValue(0)
+        self.animation.setEndValue(1)
+        self.animation.setEasingCurve(QEasingCurve.InOutQuad)
         self.animation.start()
         super().show()
 
+
 if __name__ == '__main__':
-    app = QApplication(sys.argv)
+    app    = QApplication(sys.argv)
     window = SubtitleEditorInterface()
     window.show()
     sys.exit(app.exec_())

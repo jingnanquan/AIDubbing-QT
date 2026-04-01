@@ -162,25 +162,29 @@ class Window(SplitFluentWindow):
 
         # 延迟初始化界面组件
         # self.SubtitleInterface = placeholder_widget("subtitle",1)
-        self.ProjectInterface = placeholder_widget("project",4)
-        # self.VoiceChangerInterface = placeholder_widget("changer",2)
-        self.ToolsInterface = placeholder_widget("tools",3)
-        self.AnnotationInterface = placeholder_widget("annotation",5)
-        self.DubbingInterface = placeholder_widget("dubbing",6)
-        self.SettingInterface = placeholder_widget("setting",7)
-
-        # 先添加占位符，实际组件延迟创建
-        self.addSubInterface(self.AnnotationInterface, FIF.TILES, '批量标注')
-        self.addSubInterface(self.DubbingInterface, FIF.VIDEO, '批量配音')
         # self.addSubInterface(self.SubtitleInterface, FIF.HOME, 'AI配音')
+
+        # self.VoiceChangerInterface = placeholder_widget("changer",2)
         # self.addSubInterface(self.VoiceChangerInterface, FIF.MUSIC_FOLDER, 'AI声线转换')
 
+        self.AnnotationInterface = placeholder_widget("annotation", 5)
+        self.addSubInterface(self.AnnotationInterface, FIF.TILES, '批量标注')
 
+        # self.DubbingInterface = placeholder_widget("dubbing", 6)
+        # self.addSubInterface(self.DubbingInterface, FIF.VIDEO, '批量配音')
+
+        self.ToolsInterface = placeholder_widget("tools",3)
         self.addSubInterface(self.ToolsInterface, FIF.CLIPPING_TOOL, '工具箱')
         self.navigationInterface.addSeparator()
+
+        self.ProjectInterface = placeholder_widget("project",4)
         self.addSubInterface(self.ProjectInterface, FIF.HOME, '我的项目')
 
+
+        self.SettingInterface = placeholder_widget("setting",7)
         self.addSubInterface(self.SettingInterface, FIF.SETTING, '设置', NavigationItemPosition.BOTTOM)
+
+        # 先添加占位符，实际组件延迟创建
 
         self.stackedWidget.currentChanged.connect(self.pageSignal)
         self.stackedWidget.currentWidget().lazy_load()
