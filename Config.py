@@ -58,6 +58,8 @@ def _pyinstaller_imports():
     from VoiceChangerInterface import VoiceChangerInterface
     from AnnotationInterface import AnnotationInterface
     from DubbingInterface import DubbingInterface
+    from SettingInterface import SettingInterface
+    from ReviewInterface.SubtitleEditorInterfaceExpr2 import SubtitleEditorInterface
 
     from ProjectCompoment.dubbingDatasetUtils import dubbingDatasetUtils
     import cv2

@@ -285,11 +285,25 @@
                 </widget>
                </item>
                <item>
-                <widget class="PushButton" name="dubbingBtn">
-                 <property name="text">
-                  <string>开始批量配音</string>
+                <layout class="QHBoxLayout" name="horizontalLayout_3" stretch="1,0">
+                 <property name="spacing">
+                  <number>20</number>
                  </property>
-                </widget>
+                 <item>
+                  <widget class="PushButton" name="dubbingBtn">
+                   <property name="text">
+                    <string>开始批量配音</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="PushButton" name="editBtn">
+                   <property name="text">
+                    <string>配音编辑器</string>
+                   </property>
+                  </widget>
+                 </item>
+                </layout>
                </item>
               </layout>
              </widget>

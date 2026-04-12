@@ -27,9 +27,9 @@ class Project:
         self.original_video_path = original_video_path  # 原视频路径（必须）
         self.original_bgm_audio_path = original_bgm_audio_path  # 原背景声音频路径（非必须）
         self.original_voice_audio_path = original_voice_audio_path  # 原人声音频路径（非必须）
-        self.target_voice_audio_path = target_voice_audio_path  # 目标人声音频路径（必须）
-        self.target_dubbing_audio_path = target_dubbing_audio_path  # 目标配音音频路径（必须）
-        self.target_video_path = target_video_path  # 目标视频路径（必须）
+        self.target_voice_audio_path = target_voice_audio_path  # 配音人声音频路径（必须）
+        self.target_dubbing_audio_path = target_dubbing_audio_path  # 配音音频路径（必须）
+        self.target_video_path = target_video_path  # 配音视频路径（必须）
         self.update_time = update_time
 
 class SubtitleProject:

@@ -208,6 +208,8 @@ class ProjectInterface(QFrame, Ui_Project):
         key = self.segmented_widget.currentRouteKey()
         project_type = "dubbing" if key == "配音项目" else "subtitle"
 
+        print("触发重加载")
+
         if self.current_project_type == project_type:
             return
 
@@ -560,7 +562,7 @@ class ProjectCard(QFrame):
         # 打开文件夹按钮
         self.open_folder_btn = QPushButton("📁", self)
         self.open_folder_btn.setObjectName("open_folder_btn")
-        self.open_folder_btn.setFixedSize(32, 32)  # 设置固定大小，比detail_btn小
+        self.open_folder_btn.setFixedSize(48, 32)  # 设置固定大小，比detail_btn小
         self.open_folder_btn.setToolTip("打开文件夹")
         self.open_folder_btn.clicked.connect(self.open_folder)
 
@@ -666,10 +668,15 @@ class ProjectCard(QFrame):
             loading_msg.show()
             QApplication.processEvents()
 
-            from ProjectCompoment.CutStudioPage import CutStudioPage
-            self.detail_page = CutStudioPage(self.project)
+            DubbingEditorInterface = _get_attr("ReviewInterface.DubbingEditorInterface", "DubbingEditorInterface")
+            self.dubbing_editor = DubbingEditorInterface()
+            self.dubbing_editor.setWindowModality(Qt.ApplicationModal)
+            print(os.path.dirname(self.project.original_video_path))
+
+            self.dubbing_editor.show_animation()
             loading_msg.hide()
-            self.detail_page.show()
+
+            self.dubbing_editor._on_import_project(os.path.dirname(self.project.original_video_path))
 
         elif self.project_type == "subtitle":
             loading_msg.setText("正在加载字幕标注界面，请稍候...")

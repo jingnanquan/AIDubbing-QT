@@ -342,27 +342,27 @@ class dubbingInterface:
                  original_video_path: str = '', 
                  original_bgm_audio_path: str = '', 
                  original_voice_audio_path: str = '',
-                     target_voice_audio_path: str = '',
+                 target_voice_audio_path: str = '',
                  target_dubbing_audio_path: str = '',
                  target_video_path: str = '',
                  dubbing_subtitles: list[Subtitle] = None,):
         """
         保存配音项目到数据库
         """
-        if not dubbing_subtitles:
-            print("***没有字幕数据，无法保存项目!!!")
-            return
+        # if not dubbing_subtitles:
+        #     print("***没有字幕数据，无法保存项目!!!")
+        #     return
         video_name = os.path.basename(original_video_path)
         projectname = "{}-配音".format(video_name)
         update_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         dubbingDatasetConn = dubbingDatasetUtils.getInstance()
         project_id = dubbingDatasetConn.insert_project(Project(projectname=projectname, original_video_path=original_video_path, original_bgm_audio_path=original_bgm_audio_path, original_voice_audio_path=original_voice_audio_path, target_voice_audio_path = target_voice_audio_path, target_dubbing_audio_path=target_dubbing_audio_path, target_video_path=target_video_path, update_time=update_time))
-        if dubbing_subtitles:
-            for subtitle in dubbing_subtitles:
-                subtitle.project_id = project_id
-            for subtitle in dubbing_subtitles:
-                print(subtitle.__dict__)
-            dubbingDatasetConn.insert_subtitle_many(dubbing_subtitles)
+        # if dubbing_subtitles:
+        #     for subtitle in dubbing_subtitles:
+        #         subtitle.project_id = project_id
+        #     for subtitle in dubbing_subtitles:
+        #         print(subtitle.__dict__)
+        #     dubbingDatasetConn.insert_subtitle_many(dubbing_subtitles)
 
     def adjust_speed2(self, input_audio: np.ndarray, characters: list, time_seconds: list,
                      target_frames: int, sr=44100, up_tolerance=None, subtitle: dict = None, index: int = 0, target_subtitles: list = None, subtitle_indices: dict = None):

@@ -146,7 +146,8 @@ class Window(SplitFluentWindow):
     def __init__(self, capturer=None):
         super().__init__()
         
-        print("进入")
+        print("进入并读取配置")
+        read_config()
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.capturer = capturer
         
@@ -170,8 +171,8 @@ class Window(SplitFluentWindow):
         self.AnnotationInterface = placeholder_widget("annotation", 5)
         self.addSubInterface(self.AnnotationInterface, FIF.TILES, '批量标注')
 
-        # self.DubbingInterface = placeholder_widget("dubbing", 6)
-        # self.addSubInterface(self.DubbingInterface, FIF.VIDEO, '批量配音')
+        self.DubbingInterface = placeholder_widget("dubbing", 6)
+        self.addSubInterface(self.DubbingInterface, FIF.VIDEO, '批量配音')
 
         self.ToolsInterface = placeholder_widget("tools",3)
         self.addSubInterface(self.ToolsInterface, FIF.CLIPPING_TOOL, '工具箱')
@@ -213,7 +214,10 @@ class Window(SplitFluentWindow):
         if self.ProjectInterface.main_widget and self.stackedWidget.currentWidget() == self.ProjectInterface:
             # ProjectInterface =
             # if isinstance(self.ProjectInterface.main_widget, ProjectInterface):
-            self.ProjectInterface.main_widget.async_refresh()
+            # self.ProjectInterface.main_widget.async_refresh()
+            self.ProjectInterface.main_widget.dubbing_data_loaded = False
+            self.ProjectInterface.main_widget.subtitle_data_loaded = False
+            self.ProjectInterface.main_widget.switch_debounce_timer.start(0)
 
         # 刷新voicedict
         # if self.DubbingInterface.main_widget and self.stackedWidget.currentWidget() == self.DubbingInterface:
@@ -297,8 +301,6 @@ def launch(enable_profiler=False):
         if profiler:
             profiler.enable()
         print("app start")
-
-        read_config()
 
         app = QApplication(sys.argv)
         window = Window(capturer=my_capturer)

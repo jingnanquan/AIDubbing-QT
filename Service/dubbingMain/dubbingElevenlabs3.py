@@ -2,6 +2,7 @@ import base64
 import copy
 import datetime
 import io
+import json
 import os
 import traceback
 
@@ -20,7 +21,7 @@ from Service.dubbingMain.dubbingElevenLabs import dubbingElevenLabs
 from Service.dubbingMain.dubbingInterface import dubbingInterface
 from Service.dubbingMain.llmAPI import LLMAPI
 from Service.dubbingMain.llmAPI2 import LLMAPI2
-from Service.generalUtils import calculate_time
+from Service.generalUtils import calculate_time, ms_to_time_str
 from Service.subtitleUtils import adjust_subtitles_cps, parse_subtitle_uncertain
 from Service.uvrMain.separate import AudioPre
 from Service.videoUtils import get_audio_np_from_video
@@ -113,7 +114,7 @@ class dubbingElevenLabs3(dubbingInterface):
             length = len(dubbing_subs)
             dubbing_subtitle_entitys = []
             dubbing_subs_list = list(dubbing_subs.values())
-            for i, subtitle in enumerate(dubbing_subs.values()):
+            for i, (key, subtitle) in enumerate(dubbing_subs.items()):
                 if on_progress:
                     on_progress(min(40 + int((i * 56) / length), 100), "")
 
@@ -219,6 +220,9 @@ class dubbingElevenLabs3(dubbingInterface):
                              voice_id=voice_id, api_id=1))
                 end2 = min(start + res_audio.shape[0], len(target_voice_audio))
                 target_voice_audio[start:end2] += res_audio[:end2 - start]
+                # 更新 dubbing_subs 中对应的字幕 end 时间
+                end2_ms = int((end2 * 1000) / samplerate)
+                dubbing_subs[key]["end"] = ms_to_time_str(end2_ms)
                 print("==**##&&==**##&&")
 
             target_voice_audio = target_voice_audio * 2  # 增强目标人声音量
@@ -339,7 +343,7 @@ class dubbingElevenLabs3(dubbingInterface):
             length = len(dubbing_subs)
             dubbing_subtitle_entitys = []
             dubbing_subs_list = list(dubbing_subs.values())
-            for i, subtitle in enumerate(dubbing_subs.values()):
+            for i, (key, subtitle) in enumerate(dubbing_subs.items()):
                 if on_progress:
                     on_progress(min(40 + int((i * 56) / length), 100), "")
 
@@ -440,6 +444,9 @@ class dubbingElevenLabs3(dubbingInterface):
                              voice_id=voice_id, api_id=1))
                 end2 = min(start + res_audio.shape[0], len(target_voice_audio))
                 target_voice_audio[start:end2] += res_audio[:end2 - start]
+                # 更新 dubbing_subs 中对应的字幕 end 时间
+                end2_ms = int((end2 * 1000) / samplerate)
+                dubbing_subs[key]["end"] = ms_to_time_str(end2_ms)
                 print("==**##&&==**##&&")
 
             target_voice_audio = target_voice_audio * 2  # 增强目标人声音量
@@ -455,6 +462,8 @@ class dubbingElevenLabs3(dubbingInterface):
             target_subtitles_path = os.path.join(result_dir, "字幕-合并后的配音字幕.txt")
             modified_subtitles_path = os.path.join(result_dir, "字幕-cps.txt")
             modified_subtitles_path2 = os.path.join(result_dir, "字幕-cps+角色.txt")
+            copyed_video_path = os.path.join(result_dir, "原视频.mp4")
+
 
             print(output_audio_file)
             print(output_video_file)
@@ -462,6 +471,8 @@ class dubbingElevenLabs3(dubbingInterface):
             sf.write(target_voice_audio_path, target_voice_audio, samplerate)
             sf.write(target_initial_voice_audio_path, all_audio, samplerate)
             self.merge_audio_video2(video_path, output_audio_file, output_video_file)
+            self.merge_audio_video2(video_path, video_audio_path, copyed_video_path)
+
             try:
                 with open(target_subtitles_path, "w", encoding="utf-8") as f:
                     for i, subtitle in enumerate(dubbing_subs.values(), start=1):
@@ -489,6 +500,20 @@ class dubbingElevenLabs3(dubbingInterface):
                             self.connect.elevenlabs.voices.delete(voice_id=value, )
                     except Exception as e:
                         print(e, "删除该声音失败")
+
+            self.save_project(original_video_path=copyed_video_path, original_voice_audio_path=vocal_path,
+                              original_bgm_audio_path=back_path, target_voice_audio_path=target_voice_audio_path,
+                              target_dubbing_audio_path=output_audio_file, target_video_path=output_video_file,
+                              dubbing_subtitles=dubbing_subtitle_entitys)
+
+            # 保存voice_ids到JSON文件
+            voice_ids_path = os.path.join(result_dir, "voice_ids.json")
+            try:
+                with open(voice_ids_path, "w", encoding="utf-8") as f:
+                    json.dump(voice_ids, f, ensure_ascii=False, indent=2)
+                print(f"voice_ids已保存到: {voice_ids_path}")
+            except Exception as e:
+                print(f"保存voice_ids文件失败: {e}")
 
             return {"result_path": result_dir, "audio_file": output_audio_file, "video_file": output_video_file}
         except Exception as e:

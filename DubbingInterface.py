@@ -342,6 +342,41 @@ class DubbingInterface(Ui_Dubbing, QFrame):
         self.DelVoiceBtn.clicked.connect(self.set_delete_voice_params)
 
 
+        # self.editBtn.setText("字幕编辑器")
+        self.editBtn.setFixedHeight(38)
+        self.editBtn.setStyleSheet("""
+                    QPushButton {
+                        background-color: #e74c3c;
+                        color: white;
+                        border: 1px solid #c0392b;
+                        border-radius: 4px;
+                        padding: 4px 8px;
+                        font-weight: bold;
+                    }
+                    QPushButton:hover {
+                        background-color: #c0392b;
+                        border: 1px solid #a93226;
+                    }
+                    QPushButton:pressed {
+                        background-color: #a93226;
+                        border: 1px solid #922b21;
+                    }
+                    QPushButton:disabled {
+                        background-color: #e0e0e0;
+                        color: #999;
+                        border: 1px solid #ccc;
+                    }
+                """)
+        self.editBtn.clicked.connect(self._on_edit_clicked)
+
+
+    def _on_edit_clicked(self):
+        DubbingEditorInterface = _get_attr("ReviewInterface.DubbingEditorInterface", "DubbingEditorInterface")
+        self.dubbing_editor = DubbingEditorInterface()
+        self.dubbing_editor.setWindowModality(Qt.ApplicationModal)
+        self.dubbing_editor.show_animation()  # 显示
+
+
     def set_delete_voice_params(self):
         DeleteVoiceParamsWindow = _get_attr("Compoment.DeleteVoiceParamsWindow", "DeleteVoiceParamsWindow")
         self.params_window = DeleteVoiceParamsWindow()

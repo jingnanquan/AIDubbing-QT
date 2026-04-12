@@ -94,7 +94,7 @@ class AnnotationInterface(Ui_Annotation, QFrame):
         self.font.setWeight(75)
         self.scrollArea.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.extractBtn.setFixedHeight(40)
-        self.editBtn.setFixedHeight(40)
+        self.editBtn.setFixedHeight(38)
 
         self.scrollArea.setStyleSheet(
             """ #scrollArea{ border: None; background: transparent; } #scrollAreaWidgetContents_2{ background: transparent; } """)
