@@ -391,7 +391,7 @@ class EditPanel(QWidget):
         self._download_btn = PushButton("下载本段人声", self)
         self._download_btn.clicked.connect(self._on_download)
 
-        self._redub_btn = PushButton("重新配音", self)
+        self._redub_btn = PrimaryPushButton("重新配音", self)
         self._redub_btn.clicked.connect(self._on_redub)
         self._redub_btn.setToolTip("使用AI重新生成该段配音")
         self._redub_btn.installEventFilter(ToolTipFilter(self._redub_btn, showDelay=500, position=ToolTipPosition.TOP))

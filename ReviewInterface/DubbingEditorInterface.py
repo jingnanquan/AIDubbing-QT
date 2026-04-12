@@ -106,26 +106,6 @@ class DubbingEditorInterface(FluentWindow):
         # self._title_btn = QPushButton("配音编辑界面", self)
         self._title_btn = HyperlinkButton()
         self._title_btn.setText("配音编辑界面")
-        # self._title_btn.setFlat(True)
-        # self._title_btn.setStyleSheet("""
-        #     QPushButton {
-        #         font-size: 14px;
-        #         font-weight: bold;
-        #         color: #2B2B2B;
-        #         background: transparent;
-        #         border: none;
-        #         padding: 0 10px;
-        #         text-align: center;
-        #     }
-        #     QPushButton:hover {
-        #         color: #4A90D9;
-        #         text-decoration: underline;
-        #     }
-        #     QPushButton:pressed {
-        #         color: #2E6CA8;
-        #     }
-        # """)
-        # self._title_btn.setCursor(Qt.PointingHandCursor)
         self._title_btn.clicked.connect(self._on_title_clicked)
 
         self.titleBar.hBoxLayout.insertWidget(0, self._import_btn, 0, Qt.AlignLeft)
@@ -188,16 +168,18 @@ class DubbingEditorInterface(FluentWindow):
         self._controller.play()
 
     def _on_slider_value_changed(self, value: int) -> None:
-        # if not self._is_slider_dragging:
-        self._controller.seek(value)
+        if self._is_slider_dragging:
+            self._controller.seek(value)
 
     def _update_progress_slider(self, position_ms: int) -> None:
+        # self._progress_slider.setValue(position_ms)
         if not self._is_slider_dragging:
-            self._progress_slider.blockSignals(True)
-            self._progress_slider.setValue(position_ms)
-            self._progress_slider.blockSignals(False)
+            if position_ms - self._progress_slider.value() >50:
+                self._progress_slider.setValue(position_ms)
+        # self._progress_slider.blockSignals(False)
 
     def _update_slider_range(self, duration_ms: int) -> None:
+        print(duration_ms,"时长"),
         if duration_ms > 0:
             self._progress_slider.setEnabled(True)
             self._progress_slider.setRange(0, duration_ms)

@@ -143,7 +143,7 @@ class Ui_Dubbing(object):
         self.dubbingBtn = PushButton(self.operate_container)
         self.dubbingBtn.setObjectName("dubbingBtn")
         self.horizontalLayout_3.addWidget(self.dubbingBtn)
-        self.editBtn = PushButton(self.operate_container)
+        self.editBtn = PrimaryPushButton(self.operate_container)
         self.editBtn.setObjectName("editBtn")
         self.horizontalLayout_3.addWidget(self.editBtn)
         self.horizontalLayout_3.setStretch(0, 1)
@@ -209,4 +209,4 @@ class Ui_Dubbing(object):
         self.DelVoiceBtn.setText(_translate("Dubbing", "管理声音"))
         self.PullVoiceBtn.setText(_translate("Dubbing", "同步声音列表"))
         self.tool1_title_2.setText(_translate("Dubbing", "角色声音选择器"))
-from qfluentwidgets import PushButton, RadioButton
+from qfluentwidgets import PushButton, RadioButton, PrimaryPushButton

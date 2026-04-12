@@ -140,7 +140,7 @@ class Ui_Annotation(object):
         self.extractBtn = PushButton(self.operate_container)
         self.extractBtn.setObjectName("extractBtn")
         self.horizontalLayout.addWidget(self.extractBtn)
-        self.editBtn = PushButton(self.operate_container)
+        self.editBtn = PrimaryPushButton(self.operate_container)
         self.editBtn.setObjectName("editBtn")
         self.horizontalLayout.addWidget(self.editBtn)
         self.horizontalLayout.setStretch(0, 1)
@@ -167,4 +167,4 @@ class Ui_Annotation(object):
         self.extraOutputBtn.setText(_translate("Annotation", "是否同步导出合并的视频与字幕"))
         self.extractBtn.setText(_translate("Annotation", "开始标注"))
         self.editBtn.setText(_translate("Annotation", "开始标注"))
-from qfluentwidgets import PushButton, RadioButton
+from qfluentwidgets import PushButton, RadioButton, PrimaryPushButton

@@ -670,12 +670,13 @@ class ProjectCard(QFrame):
 
             DubbingEditorInterface = _get_attr("ReviewInterface.DubbingEditorInterface", "DubbingEditorInterface")
             self.dubbing_editor = DubbingEditorInterface()
+
             self.dubbing_editor.setWindowModality(Qt.ApplicationModal)
             print(os.path.dirname(self.project.original_video_path))
-
-            self.dubbing_editor.show_animation()
             loading_msg.hide()
 
+            self.dubbing_editor.show_animation()
+            self.dubbing_editor.raise_()
             self.dubbing_editor._on_import_project(os.path.dirname(self.project.original_video_path))
 
         elif self.project_type == "subtitle":

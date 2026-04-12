@@ -18,10 +18,11 @@ if TYPE_CHECKING:
 def _fmt_clock(ms: int) -> str:
     ms = max(0, int(ms))
     total_seconds = ms // 1000
+    milliseconds = ms % 1000
     h = total_seconds // 3600
     m = (total_seconds % 3600) // 60
     s = total_seconds % 60
-    return f"{h:02d}:{m:02d}:{s:02d}"
+    return f"{h:02d}:{m:02d}:{s:02d}.{milliseconds:03d}"
 
 
 class VideoPanel(QWidget):
@@ -49,7 +50,7 @@ class VideoPanel(QWidget):
         self._play_btn = PrimaryPushButton("播放", self)
         self._play_btn.clicked.connect(self._on_play_clicked)
 
-        self._time_label = BodyLabel("00:00:00 / 00:00:00", self)
+        self._time_label = BodyLabel("00:00:00.000 / 00:00:00.000", self)
 
         self._bgm_switch = SwitchButton(self)
         self._vocal_switch = SwitchButton(self)
