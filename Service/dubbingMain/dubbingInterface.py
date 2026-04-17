@@ -370,7 +370,7 @@ class dubbingInterface:
         global_speed = input_frames / target_frames
         # 我希望加速倍数在1.1以内并且绝对值不超过12000 大概0.28s
         if global_speed>0.96 and global_speed<1.1:
-            res_audio = audio_speed(input_audio, global_speed)
+            res_audio = audio_speed(input_audio, global_speed, sr)
             return res_audio
         else:
             split_subtitles_index = list(subtitle_indices.values())[index]
@@ -464,7 +464,7 @@ class dubbingInterface:
                         speed = section_audio.shape[0] / (align_end - align_start)
                         speed = max(speed, 0.96)
 
-                align_audio = audio_speed(section_audio, speed)
+                align_audio = audio_speed(section_audio, speed, sr)
                 # print(align_audio.shape)
                 zeros_audio[align_start: align_start+align_audio.shape[0]] += align_audio
                 pointer = align_start+align_audio.shape[0]

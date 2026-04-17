@@ -4,6 +4,9 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ffmpeg_dir = os.path.join(BASE_DIR, "Service\\ffmpeg-7.1.1-essentials_build\\bin")
 os.environ['PATH'] = ffmpeg_dir + os.pathsep + os.environ.get('PATH', '')
 
+rubberband_dir = os.path.join(BASE_DIR, "Service\\rubberband")
+os.environ['PATH'] = rubberband_dir + os.pathsep + os.environ.get('PATH', '')
+
 # 延迟设置PATH，避免启动时的环境变量操作
 def _setup_ffmpeg_path():
     pass

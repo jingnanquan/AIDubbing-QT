@@ -3,6 +3,7 @@ import os
 
 import librosa
 import numpy as np
+import pyrubberband as pyrb
 import soundfile as sf
 from Config import AUDIO_SEPARATION_FOLDER
 from Service.generalUtils import time_str_to_ms
@@ -43,7 +44,39 @@ def split_roles_audio(subtitles: dict, audio_path: str, output_path = AUDIO_SEPA
     return role_subtitles, audio, samplerate, role_audio_path
 
 
-def audio_speed(audio: np.ndarray, speed: float) -> np.ndarray:
+def audio_speed(audio: np.ndarray, speed: float, sr: int = 44100) -> np.ndarray:
+    """
+    使用 pyrubberband 改变音频的播放速度，保持音色和音量
+    :param audio: 输入音频数组
+    :param speed: 播放速度倍数，大于1为加速，小于1为减速
+    :param sr: 音频采样率，默认44100
+    :return: 改变速度后的音频数组
+    """
+    # 处理双声道音频
+    if audio.ndim == 2 and audio.shape[1] == 2:
+        # 取单声道进行处理
+        audio_mono = audio[:, 0]
+        # 计算原始音量 (RMS)
+        original_rms = librosa.feature.rms(y=audio_mono)[0].mean()
+        # 使用 pyrubberband 进行变速处理
+        stretched_mono = pyrb.time_stretch(audio_mono, sr, speed)
+        # 恢复原始音量
+        stretched_mono = stretched_mono * (original_rms / (librosa.feature.rms(y=stretched_mono)[0].mean() + 1e-6))
+        # 重建双声道
+        res_audio = np.vstack([stretched_mono, stretched_mono]).T
+    else:
+        # 单声道音频
+        original_rms = librosa.feature.rms(y=audio)[0].mean()
+        # 使用 pyrubberband 进行变速处理
+        stretched = pyrb.time_stretch(audio, sr, speed)
+        # 恢复原始音量
+        res_audio = stretched * (original_rms / (librosa.feature.rms(y=stretched)[0].mean() + 1e-6))
+    
+    return res_audio
+
+
+
+def audio_speed_copy(audio: np.ndarray, speed: float) -> np.ndarray:
     """
     改变音频的播放速度
     :param audio: 输入音频数组

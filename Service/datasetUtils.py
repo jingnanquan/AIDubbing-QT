@@ -24,6 +24,13 @@ class datasetUtils:
         except Exception as e:
             print("插入失败：", e)
 
+    def save_voice_id_withtime(self, api_id:int, voice_name: str, voice_id: str, create_time: int):
+        # table = self.db["voiceTable"]
+        try:
+            self.voiceTable.insert({"api_id": api_id, "voice_name":voice_name, "voice_id":voice_id, "create_time": create_time})
+        except Exception as e:
+            print("插入失败：", e)
+
     def query_voice_id(self, api_id_p: int):
         # 1为elevenlab 2为minimax
         if api_id_p ==0:
@@ -32,8 +39,18 @@ class datasetUtils:
             result = self.voiceTable.find(api_id=api_id_p)
         result_list = list(result)
         result_list.reverse()
-        print(result_list)
         return {item["voice_name"]: item["voice_id"] for item in list(result_list)}
+
+    def query_voice_id_withtime(self, api_id_p: int):
+        # 1为elevenlab 2为minimax
+        if api_id_p == 0:
+            result = self.voiceTable.all()
+        else:
+            result = self.voiceTable.find(api_id=api_id_p)
+        result_list = list(result)
+        result_list.reverse()
+        print(result_list[0:20])
+        return {item["voice_name"]: [item["voice_id"],"", item["create_time"]] for item in list(result_list)}
 
         # table = self.db["voiceTable"]
     def sava_changer_audio_dir(self, dir_path: str):
@@ -50,7 +67,7 @@ class datasetUtils:
         return res
 
     def update_voice_id(self, voice_list: list):
-        print(voice_list)
+        # print(voice_list)
         self.voiceTable.delete()  # 删除所有声音
         self.voiceTable.insert_many(voice_list)  # 批量插入
 

@@ -62,7 +62,7 @@ def import_project_folder(project_dir: str) -> ProjectImportResult:
             resolved[key] = os.path.join(project_dir, found)
 
     if missing:
-        return ProjectImportResult(False, "项目导入失败", None, None, None)
+        return ProjectImportResult(False, "项目导入失败，缺少"+"、".join(missing), None, None, None)
 
     workspace_dir = os.path.join(project_dir, "workspace")
     os.makedirs(workspace_dir, exist_ok=True)

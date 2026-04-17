@@ -100,22 +100,34 @@ from Config import resource_path
 #     "默认声音":  ["uju3wxzG5OhpWcoi3SMy", os.path.join(resource_path, "prepared_voices", "default.mp3")],
 # }
 
-
+# from functools import lru_cache
+# from importlib import import_module
+#
+# @lru_cache(maxsize=None)
+# def _load_module(path: str):
+#     return import_module(path)
+#
+#
+# def _get_attr(module_path: str, attr_name: str):
+#     return getattr(_load_module(module_path), attr_name)
+#
+#
 
 class VoiceLoaderWorker(QThread):
     voice_dict_loaded = pyqtSignal(dict, list)  # 成功时发射
 
+    # @pyqtSlot()
     def run(self):
         try:
             from Service.datasetUtils import datasetUtils
             # datasetUtils = _get_attr("Service.datasetUtils", "datasetUtils")
-            voiceDict2 = datasetUtils.getInstance().query_voice_id_withtime(1)
+            voiceDict1 = datasetUtils.getInstance().query_voice_id(1)
 
             # voice_module = _load_module("Compoment.DubbingParamParams")
             # spare_voices = getattr(voice_module, "spare_voices")
             # prepared_voices = getattr(voice_module, "prepared_voices")
 
-            # voiceDict2 = {key: [value, ""] for key, value in voiceDict1.items()}
+            voiceDict2 = {key: [value, ""] for key, value in voiceDict1.items()}
             voiceDict = spare_voices | voiceDict2 | prepared_voices
             voiceNameList = list(voiceDict.keys())
 
@@ -349,30 +361,15 @@ class VoiceSelectorWindow(QMainWindow):
         from Service.dubbingMain.dubbingElevenLabs import dubbingElevenLabs
 
         print(voice_id, file_path)
-        cannotplaying = ""
         if not file_path and voice_id:
             try:
                 file_path = dubbingElevenLabs.getInstance().elevenlabs.voices.get(voice_id=voice_id).preview_url
             except Exception as e:
                 print(f"获取声音失败: {e}")
-                cannotplaying = f"获取声音失败: {e}"
-                # file_path = os.path.join(resource_path, "prepared_voices", "default.mp3")
+                file_path = os.path.join(resource_path, "prepared_voices", "default.mp3")
         if not file_path:
-            cannotplaying = f"该选项无试听声音"
-            # file_path = os.path.join(resource_path, "prepared_voices", "default.mp3")
+            file_path = os.path.join(resource_path, "prepared_voices", "default.mp3")
         print(file_path)
-        if cannotplaying:
-            InfoBar.error(
-                title="播放声音失败",
-                content=cannotplaying,
-                orient=Qt.Horizontal,
-                isClosable=True,
-                position=InfoBarPosition.TOP_RIGHT,
-                duration=5000,
-                parent=self,
-            )
-            return
-
         if file_path.startswith("http"):
             self.audio_bar.player.setSource(QUrl(file_path))
         else:

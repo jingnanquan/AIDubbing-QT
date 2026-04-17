@@ -1,7 +1,8 @@
 import logging
 
-from qfluentwidgets import RadioButton, LineEdit, BodyLabel, ComboBox, PrimaryPushButton
+from qfluentwidgets import LineEdit, BodyLabel, ComboBox
 
+from Compoment.DubbingConfigs import VoiceLoaderWorker
 from Compoment.FolderSelector import SingleFolderSelector
 from Config import ROLE_ANNO_FOLDER, RESULT_OUTPUT_FOLDER
 import sys
@@ -109,27 +110,27 @@ class VoiceSelectorWidget(QFrame):
         #     self.combo_box.addItems(voice_list)
 
 
-class VoiceLoaderWorker(QThread):
-    voice_dict_loaded = pyqtSignal(dict, list)  # 成功时发射
-
-    # @pyqtSlot()
-    def run(self):
-        try:
-            datasetUtils = _get_attr("Service.datasetUtils", "datasetUtils")
-            voiceDict1 = datasetUtils.getInstance().query_voice_id(1)
-
-            voice_module = _load_module("Compoment.DubbingParamParams")
-            spare_voices = getattr(voice_module, "spare_voices")
-            prepared_voices = getattr(voice_module, "prepared_voices")
-
-            voiceDict2 = {key: [value, ""] for key, value in voiceDict1.items()}
-            voiceDict = spare_voices | voiceDict2 | prepared_voices
-            voiceNameList = list(voiceDict.keys())
-
-            self.voice_dict_loaded.emit(voiceDict, voiceNameList)
-        except Exception as exc:
-            logging.error(f"加载声音资源失败: {exc}")
-            self.voice_dict_loaded.emit({}, [])
+# class VoiceLoaderWorker(QThread):
+#     voice_dict_loaded = pyqtSignal(dict, list)  # 成功时发射
+#
+#     # @pyqtSlot()
+#     def run(self):
+#         try:
+#             datasetUtils = _get_attr("Service.datasetUtils", "datasetUtils")
+#             voiceDict1 = datasetUtils.getInstance().query_voice_id(1)
+#
+#             voice_module = _load_module("Compoment.DubbingParamParams")
+#             spare_voices = getattr(voice_module, "spare_voices")
+#             prepared_voices = getattr(voice_module, "prepared_voices")
+#
+#             voiceDict2 = {key: [value, ""] for key, value in voiceDict1.items()}
+#             voiceDict = spare_voices | voiceDict2 | prepared_voices
+#             voiceNameList = list(voiceDict.keys())
+#
+#             self.voice_dict_loaded.emit(voiceDict, voiceNameList)
+#         except Exception as exc:
+#             logging.error(f"加载声音资源失败: {exc}")
+#             self.voice_dict_loaded.emit({}, [])
 
 
 class DubbingInterface(Ui_Dubbing, QFrame):

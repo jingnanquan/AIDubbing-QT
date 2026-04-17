@@ -6,7 +6,7 @@ from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QGridLayout, QScrollArea, QCheckBox, QPushButton,
                              QLabel, QFrame, QMessageBox, QApplication)
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
-from qfluentwidgets import CheckBox
+from qfluentwidgets import CheckBox, Theme, setTheme, PushButton
 
 from Service.datasetUtils import datasetUtils
 
@@ -31,7 +31,7 @@ class DeleteVoiceWorker(QThread):
             fail_count = 0
 
             # 使用线程池并发删除声音，最大并发数为5
-            with ThreadPoolExecutor(max_workers=5) as executor:
+            with ThreadPoolExecutor(max_workers=10) as executor:
                 # 提交所有删除任务
                 future_to_name = {
                     executor.submit(self.delete_single_voice, eleven, name, voice_id): name
@@ -76,6 +76,7 @@ class DeleteVoiceWorker(QThread):
 class DeleteVoiceParamsWindow(QMainWindow):
     def __init__(self, parent=None):
         super().__init__(parent)
+        setTheme(Theme.LIGHT)
         self.allow_close=True
         self.voice_checkboxes = []
         self.voice_dict = {}
@@ -112,7 +113,7 @@ class DeleteVoiceParamsWindow(QMainWindow):
         title_label = QLabel("选择要删除的声音:")
         title_label.setFont(QFont("Microsoft YaHei", 14))
 
-        self.select_all_btn = QPushButton("全选")
+        self.select_all_btn = PushButton("全选")
         self.select_all_btn.clicked.connect(self.toggle_select_all)
 
         top_layout.addWidget(title_label)
@@ -147,7 +148,7 @@ class DeleteVoiceParamsWindow(QMainWindow):
         bottom_layout = QHBoxLayout()
         bottom_layout.addStretch()
 
-        self.delete_btn = QPushButton("确认删除")
+        self.delete_btn = PushButton("确认删除")
         self.delete_btn.setStyleSheet("""
             QPushButton {
                 background-color: #ff4d4d;

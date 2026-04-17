@@ -172,8 +172,8 @@ class VideoPanel(QWidget):
 
         path = urls[0].toLocalFile()
         result = import_project_folder(path)
-        if result.ok and result.paths:
-            self.project_imported.emit(result)
+        # if result.ok and result.paths:
+        self.project_imported.emit(result)
 
     def _update_border_style(self, highlight: bool) -> None:
         if highlight:

@@ -39,9 +39,9 @@ class PullVoiceWorker(QThread):
             #     {"api_id": 1, "voice_name": voice.name, "voice_id": voice.voice_id}
             #     for voice in voice_list if '-' in voice.name
             # ]
-
+            # print([voice.created_at_unix for voice in voice_list[0: 20]])
             voice_list = [
-                {"api_id": 1, "voice_name": voice.name, "voice_id": voice.voice_id}
+                {"api_id": 1, "voice_name": voice.name, "voice_id": voice.voice_id, "create_time": voice.created_at_unix}
                 for voice in voice_list
             ]
             datasetUtils.getInstance().update_voice_id(voice_list)

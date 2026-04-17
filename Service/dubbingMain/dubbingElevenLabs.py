@@ -4,25 +4,25 @@ import os
 import traceback
 
 # 延迟导入重量级库
-import librosa
+# import librosa
 import numpy as np
-import soundfile as sf
+# import soundfile as sf
 import time
-import ffmpeg
-from pydub import AudioSegment
+# import ffmpeg
+# from pydub import AudioSegment
 
 from Config import RESULT_OUTPUT_FOLDER
 from Service.ccTest import API_KEY_ElevenLabs
 from ProjectCompoment.dubbingEntity import Subtitle
 from Service.datasetUtils import datasetUtils
-from Service.dubbingMain.dubbingInterface import dubbingInterface
-from Service.dubbingMain.llmAPI import LLMAPI
+# from Service.dubbingMain.dubbingInterface import dubbingInterface
+# from Service.dubbingMain.llmAPI import LLMAPI
 from Service.generalUtils import calculate_time, get_result_path
 from Service.generalUtils2 import decrypt_string
-from Service.videoUtils import get_audio_zeronp_from_video
+# from Service.videoUtils import get_audio_zeronp_from_video
 
-
-class dubbingElevenLabs(dubbingInterface):
+# dubbingInterface
+class dubbingElevenLabs():
     """
     dubbingMiniMax类，继承自dubbingInterface
     这个类是典型的配音类，可以有多个api或自定义实现。
@@ -79,8 +79,10 @@ class dubbingElevenLabs(dubbingInterface):
         """
         人声分离
         """
+        import soundfile as sf
+        from pydub import AudioSegment
         try:
-            
+
             audio_data = io.BytesIO(open(origin_audio_path, "rb").read())
             vocal_audio_data = self.elevenlabs.audio_isolation.convert(audio=audio_data)
 
@@ -91,6 +93,7 @@ class dubbingElevenLabs(dubbingInterface):
             res_audio = res_audio.astype(np.float64) / 32768.0
             res_audio = np.vstack([res_audio, res_audio]).T  # 变为双声道
 
+
             sf.write(vocal_path, res_audio, 44100)
             return True
         except Exception as e:
@@ -98,7 +101,8 @@ class dubbingElevenLabs(dubbingInterface):
             return False
 
     def video_voice_isolate(self, origin_video_path, vocal_path: str):
-        
+        import soundfile as sf
+        from pydub import AudioSegment
         audio = AudioSegment.from_file(origin_video_path)
         # 将音频数据转为 WAV 格式的字节流
         audio_data = io.BytesIO()
@@ -151,6 +155,10 @@ class dubbingElevenLabs(dubbingInterface):
 
     def directed_dubbing(self, target_subs: list, role_match_list: list, video_path: str, voice_param: dict, on_progress=None):
         ## 这里为直接配音
+        import soundfile as sf
+        from pydub import AudioSegment
+        from Service.videoUtils import get_audio_zeronp_from_video
+
         print(voice_param)
         if on_progress:
             on_progress(20, "背景声音处理中...")
@@ -232,7 +240,8 @@ class dubbingElevenLabs(dubbingInterface):
         所有的role_match_list均是采用数组调用，要确保role_match_list长度大于等于subs，不越界
         """
         # 延迟导入
-        
+        import soundfile as sf
+        from pydub import AudioSegment
         # if not self.validate_inputs(vocal_path, back_path):
         #     return {"error": "Invalid input files."}
         back_audio, samplerate = sf.read(back_path)
@@ -319,144 +328,148 @@ class dubbingElevenLabs(dubbingInterface):
 
 
 
-    def dubbing_high_quality(self, vocal_path: str, back_path: str, subtitles: list, target_subs: list, role_match_list: list,video_path: str, voice_param: dict, on_progress=None) -> dict:
-        '''
-        我在这里加上了当前配音的前两句，以提高生成的稳定性, 但是其实是基于音素切分的，它实际上是生成了更长的音频，然后裁剪的
-        '''
-        back_audio, samplerate = sf.read(back_path)
-        assert isinstance(back_audio, np.ndarray)
-        target_voice_audio = np.zeros_like(back_audio)  # 初始化目标人声音频
-        print(back_audio.shape)
-
-        try:
-            # 以role为key的字幕、原始音频、采样率、角色音频路径
-            if on_progress:
-                on_progress(25, "角色干音分片中...")
-            role_subtitles, vocal_audio, _, role_audio_path = self.parse_roles_numpy_separate(subtitles,
-                                                                                              role_match_list,
-                                                                                              vocal_path, voice_param)
-            timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-            if on_progress:
-                on_progress(30, "角色声音克隆中...")
-            voice_ids = self.batch_clone_text(role_subtitles, role_audio_path, timestamp, voice_param)
-        except Exception as e:
-            print(f"克隆过程发生错误: {e}")
-            return {"error": f"克隆过程发生错误: {e}"}
-
-        if on_progress:
-            on_progress(40, "正在进行配音...")
-        left = 0
-        right = 0
-        previous1 = ""
-        previous2 = ""
-        dubbing_subtitle_entitys = []
-        voice_setting = {"stability": 0.6, "similarity_boost": 0.75, "style": 0.15, "use_speaker_boost": True, "speed": 1.0}
-        time1 = time.time()
-        try:
-            while right < len(target_subs):
-                role = role_match_list[left]
-                start = target_subs[left]['start']
-                left_end = self.time_str_to_ms(target_subs[left]['end'])  # 获得毫秒数
-                text = ""
-                origin_text = ""
-                can_conn = True
-                while right < len(target_subs):
-                    if role_match_list[right] != role:
-                        break
-                    right_start = self.time_str_to_ms(target_subs[right]['start'])
-                    state = self.judge_conn(right_start - left_end, can_conn, text)
-                    if state != 2:
-                        text += target_subs[right]['text'] + ','
-                        origin_text += subtitles[right]['text'] + ','
-                        left_end = self.time_str_to_ms(target_subs[right]['end'])  # 获得毫秒数
-                        right += 1
-                        if state == 1:
-                            can_conn = False
-                    else:
-                        break
-                end = target_subs[right - 1]['end']  # 还需要检查时间是否连续
-
-                start_str = start
-                end_str = end
-                start = int((self.time_str_to_ms(start) * samplerate) / 1000)
-                end = int((self.time_str_to_ms(end) * samplerate) / 1000)
-                print(role, start, end, text)
-                if on_progress:
-                    on_progress(min(40+int((right*56)/len(target_subs)), 100), "")
-                audio = self.elevenlabs.text_to_speech.convert(
-                    text=text,
-                    voice_id=voice_ids[role] if role in voice_ids else "JBFqnCBsd6RMkjVDRZzb",
-                    model_id="eleven_multilingual_v2",
-                    output_format="mp3_44100_128",
-                    voice_settings= voice_setting,
-                    previous_text = previous1+" "+previous2
-                )
-                audio_bytes = b''.join(audio)
-                dub_audio = AudioSegment.from_file(io.BytesIO(audio_bytes)) # 读取配音音频段
-                dub_audio = dub_audio.set_frame_rate(samplerate)
-                res_audio = np.array(dub_audio.get_array_of_samples())
-                res_audio = res_audio.astype(np.float64) / 32768.0
-                res_audio = self.trim_silence(res_audio, samplerate)  # 去除静音段
-                res_audio = np.vstack([res_audio, res_audio]).T  # 在变为双声道之前，先去除收尾的空
-
-
-                source_frames = end-start
-                res_frames = res_audio.shape[0]
-                if res_frames - source_frames > 7000:  # 超出太多，就应该加速，大概冗余0.16s
-                    print("时长超出太多，应该加速")
-                    speed = res_frames / (source_frames+7000)
-                    # 使用librosa加速音频
-                    res_audio_mono = res_audio[:, 0]  # 取单声道
-                    original_rms = librosa.feature.rms(y=res_audio_mono)[0].mean()
-                    res_audio_stretched = librosa.effects.time_stretch(res_audio_mono, rate = speed)
-                    res_audio_stretched = res_audio_stretched * (original_rms / (librosa.feature.rms(y=res_audio_stretched)[0].mean() + 1e-6))  # 恢复到原音量
-                    # 保持双声道
-                    res_audio_stretched = np.vstack([res_audio_stretched, res_audio_stretched]).T
-                    res_audio = res_audio_stretched
-                dubbing_duration = int((res_audio.shape[0]/samplerate)*1000)
-                dubbing_subtitle_entitys.append(
-                    Subtitle(original_subtitle=origin_text, target_subtitle=text, start_time=start_str,
-                             end_time=end_str, role_name=role, dubbing_duration=dubbing_duration,
-                             voice_id=voice_ids[role] if role in voice_ids else "JBFqnCBsd6RMkjVDRZzb", api_id=1))
-                if start + res_audio.shape[0] > back_audio.shape[0]:  # 那这里肯定出了问题
-                    target_voice_audio[start: back_audio.shape[0]] += res_audio[:back_audio.shape[0] - start]
-                target_voice_audio[start: start + res_audio.shape[0]] += res_audio
-                left = right
-                previous1 = previous2
-                previous2 = text
-            if on_progress:
-                on_progress(98, "保存文件中...")
-            target_voice_audio = target_voice_audio*2  # 增强目标人声音量
-            target_voice_audio = np.clip(target_voice_audio, -1.0, 1.0)
-
-            back_audio+=target_voice_audio
-            output_audio_file = get_result_path("音频-配音-{}.mp3".format(timestamp))
-            target_voice_audio_path = get_result_path("音频-目标人声-{}.mp3".format(timestamp))
-            output_video_file = get_result_path("视频-配音-{}.mp4".format(timestamp))
-            print(output_audio_file)
-            print(output_video_file)
-            sf.write(output_audio_file, back_audio, samplerate)
-            sf.write(target_voice_audio_path, target_voice_audio, samplerate)
-            self.merge_audio_video2(video_path, output_audio_file, output_video_file)
-            time2 = time.time()
-            print("配音完成，耗时: {}秒".format(time2 - time1))
-
-            # 我只在成功的时候进行保存，并且这个
-            self.save_project(original_video_path=video_path, original_voice_audio_path=vocal_path, original_bgm_audio_path=back_path, target_voice_audio_path= target_voice_audio_path, target_dubbing_audio_path=output_audio_file, target_video_path=output_video_file, dubbing_subtitles=dubbing_subtitle_entitys)
-
-            return {"audio_file": output_audio_file, "video_file": output_video_file}
-        except Exception as e:
-            # 处理特定异常
-            print(f"配音过程发生错误: {e}")
-            traceback.print_exc()
-            output_audio_file = get_result_path("音频-配音-错误保留{}.mp3".format(timestamp))
-            sf.write(output_audio_file, back_audio, samplerate)
-            return {"audio_file": output_audio_file, "error": f"配音过程发生错误: {e}"}
+    # def dubbing_high_quality(self, vocal_path: str, back_path: str, subtitles: list, target_subs: list, role_match_list: list,video_path: str, voice_param: dict, on_progress=None) -> dict:
+    #     '''
+    #     我在这里加上了当前配音的前两句，以提高生成的稳定性, 但是其实是基于音素切分的，它实际上是生成了更长的音频，然后裁剪的
+    #     '''
+    #     import soundfile as sf
+    #     back_audio, samplerate = sf.read(back_path)
+    #     assert isinstance(back_audio, np.ndarray)
+    #     target_voice_audio = np.zeros_like(back_audio)  # 初始化目标人声音频
+    #     print(back_audio.shape)
+    #
+    #     try:
+    #         # 以role为key的字幕、原始音频、采样率、角色音频路径
+    #         if on_progress:
+    #             on_progress(25, "角色干音分片中...")
+    #         role_subtitles, vocal_audio, _, role_audio_path = self.parse_roles_numpy_separate(subtitles,
+    #                                                                                           role_match_list,
+    #                                                                                           vocal_path, voice_param)
+    #         timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    #         if on_progress:
+    #             on_progress(30, "角色声音克隆中...")
+    #         voice_ids = self.batch_clone_text(role_subtitles, role_audio_path, timestamp, voice_param)
+    #     except Exception as e:
+    #         print(f"克隆过程发生错误: {e}")
+    #         return {"error": f"克隆过程发生错误: {e}"}
+    #
+    #     if on_progress:
+    #         on_progress(40, "正在进行配音...")
+    #     left = 0
+    #     right = 0
+    #     previous1 = ""
+    #     previous2 = ""
+    #     dubbing_subtitle_entitys = []
+    #     voice_setting = {"stability": 0.6, "similarity_boost": 0.75, "style": 0.15, "use_speaker_boost": True, "speed": 1.0}
+    #     time1 = time.time()
+    #     try:
+    #         while right < len(target_subs):
+    #             role = role_match_list[left]
+    #             start = target_subs[left]['start']
+    #             left_end = self.time_str_to_ms(target_subs[left]['end'])  # 获得毫秒数
+    #             text = ""
+    #             origin_text = ""
+    #             can_conn = True
+    #             while right < len(target_subs):
+    #                 if role_match_list[right] != role:
+    #                     break
+    #                 right_start = self.time_str_to_ms(target_subs[right]['start'])
+    #                 state = self.judge_conn(right_start - left_end, can_conn, text)
+    #                 if state != 2:
+    #                     text += target_subs[right]['text'] + ','
+    #                     origin_text += subtitles[right]['text'] + ','
+    #                     left_end = self.time_str_to_ms(target_subs[right]['end'])  # 获得毫秒数
+    #                     right += 1
+    #                     if state == 1:
+    #                         can_conn = False
+    #                 else:
+    #                     break
+    #             end = target_subs[right - 1]['end']  # 还需要检查时间是否连续
+    #
+    #             start_str = start
+    #             end_str = end
+    #             start = int((self.time_str_to_ms(start) * samplerate) / 1000)
+    #             end = int((self.time_str_to_ms(end) * samplerate) / 1000)
+    #             print(role, start, end, text)
+    #             if on_progress:
+    #                 on_progress(min(40+int((right*56)/len(target_subs)), 100), "")
+    #             audio = self.elevenlabs.text_to_speech.convert(
+    #                 text=text,
+    #                 voice_id=voice_ids[role] if role in voice_ids else "JBFqnCBsd6RMkjVDRZzb",
+    #                 model_id="eleven_multilingual_v2",
+    #                 output_format="mp3_44100_128",
+    #                 voice_settings= voice_setting,
+    #                 previous_text = previous1+" "+previous2
+    #             )
+    #             audio_bytes = b''.join(audio)
+    #             dub_audio = AudioSegment.from_file(io.BytesIO(audio_bytes)) # 读取配音音频段
+    #             dub_audio = dub_audio.set_frame_rate(samplerate)
+    #             res_audio = np.array(dub_audio.get_array_of_samples())
+    #             res_audio = res_audio.astype(np.float64) / 32768.0
+    #             res_audio = self.trim_silence(res_audio, samplerate)  # 去除静音段
+    #             res_audio = np.vstack([res_audio, res_audio]).T  # 在变为双声道之前，先去除收尾的空
+    #
+    #
+    #             source_frames = end-start
+    #             res_frames = res_audio.shape[0]
+    #             if res_frames - source_frames > 7000:  # 超出太多，就应该加速，大概冗余0.16s
+    #                 print("时长超出太多，应该加速")
+    #                 speed = res_frames / (source_frames+7000)
+    #                 # 使用librosa加速音频
+    #                 res_audio_mono = res_audio[:, 0]  # 取单声道
+    #                 original_rms = librosa.feature.rms(y=res_audio_mono)[0].mean()
+    #                 res_audio_stretched = librosa.effects.time_stretch(res_audio_mono, rate = speed)
+    #                 res_audio_stretched = res_audio_stretched * (original_rms / (librosa.feature.rms(y=res_audio_stretched)[0].mean() + 1e-6))  # 恢复到原音量
+    #                 # 保持双声道
+    #                 res_audio_stretched = np.vstack([res_audio_stretched, res_audio_stretched]).T
+    #                 res_audio = res_audio_stretched
+    #             dubbing_duration = int((res_audio.shape[0]/samplerate)*1000)
+    #             dubbing_subtitle_entitys.append(
+    #                 Subtitle(original_subtitle=origin_text, target_subtitle=text, start_time=start_str,
+    #                          end_time=end_str, role_name=role, dubbing_duration=dubbing_duration,
+    #                          voice_id=voice_ids[role] if role in voice_ids else "JBFqnCBsd6RMkjVDRZzb", api_id=1))
+    #             if start + res_audio.shape[0] > back_audio.shape[0]:  # 那这里肯定出了问题
+    #                 target_voice_audio[start: back_audio.shape[0]] += res_audio[:back_audio.shape[0] - start]
+    #             target_voice_audio[start: start + res_audio.shape[0]] += res_audio
+    #             left = right
+    #             previous1 = previous2
+    #             previous2 = text
+    #         if on_progress:
+    #             on_progress(98, "保存文件中...")
+    #         target_voice_audio = target_voice_audio*2  # 增强目标人声音量
+    #         target_voice_audio = np.clip(target_voice_audio, -1.0, 1.0)
+    #
+    #         back_audio+=target_voice_audio
+    #         output_audio_file = get_result_path("音频-配音-{}.mp3".format(timestamp))
+    #         target_voice_audio_path = get_result_path("音频-目标人声-{}.mp3".format(timestamp))
+    #         output_video_file = get_result_path("视频-配音-{}.mp4".format(timestamp))
+    #         print(output_audio_file)
+    #         print(output_video_file)
+    #         sf.write(output_audio_file, back_audio, samplerate)
+    #         sf.write(target_voice_audio_path, target_voice_audio, samplerate)
+    #         self.merge_audio_video2(video_path, output_audio_file, output_video_file)
+    #         time2 = time.time()
+    #         print("配音完成，耗时: {}秒".format(time2 - time1))
+    #
+    #         # 我只在成功的时候进行保存，并且这个
+    #         self.save_project(original_video_path=video_path, original_voice_audio_path=vocal_path, original_bgm_audio_path=back_path, target_voice_audio_path= target_voice_audio_path, target_dubbing_audio_path=output_audio_file, target_video_path=output_video_file, dubbing_subtitles=dubbing_subtitle_entitys)
+    #
+    #         return {"audio_file": output_audio_file, "video_file": output_video_file}
+    #     except Exception as e:
+    #         # 处理特定异常
+    #         print(f"配音过程发生错误: {e}")
+    #         traceback.print_exc()
+    #         output_audio_file = get_result_path("音频-配音-错误保留{}.mp3".format(timestamp))
+    #         sf.write(output_audio_file, back_audio, samplerate)
+    #         return {"audio_file": output_audio_file, "error": f"配音过程发生错误: {e}"}
 
     def dubbing_without_clone(self, target_subs: list, role_match_list: list, voice_param: dict, modified_subs: list[list], on_progress=None) -> dict:
         '''
         跟原音视频无关，直接调用api和声音
         '''
+        import soundfile as sf
+        from pydub import AudioSegment
+        from Service.dubbingMain.llmAPI import LLMAPI
         print("====进入配音====")
         print(self.elevenlabs.models.list())
         print(target_subs)
@@ -579,6 +592,7 @@ class dubbingElevenLabs(dubbingInterface):
 
     def merge_audio_video2(self, video_path: str, audio_path: str, output_path: str):
         # 加载视频（自动丢弃原音频）
+        import ffmpeg
         video_stream = ffmpeg.input(video_path)
         audio_stream = ffmpeg.input(audio_path)
 

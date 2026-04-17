@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-import base64
 import io
 import os
 import tempfile
 from typing import Any, Optional
 
-import librosa
 import numpy as np
-import soundfile as sf
+
 
 from PyQt5.QtCore import QThread, QTimer, QUrl, pyqtSignal, Qt
 from PyQt5.QtGui import QFont
@@ -21,16 +19,28 @@ from qfluentwidgets import (
     BodyLabel, ComboBox, DoubleSpinBox,
     IndeterminateProgressRing, PlainTextEdit, PrimaryPushButton,
     PushButton, StrongBodyLabel, SubtitleLabel, ToolTipFilter,
-    ToolTipPosition
+    ToolTipPosition, InfoBar, InfoBarPosition
 )
 
+import librosa
+import pyrubberband as pyrb
+import soundfile as sf
+
+
+# from DubbingInterface import _get_attr
 from ReviewInterface.dubbingedit_app.core.subtitle_parser import timecode_to_ms
 # from dubbingedit_app.core.workspace_paths import WorkspacePaths
 # from ReviewInterface.dubbingedit_app.utils.audio_utils import export_segment_wav
 
 from ReviewInterface.dubbingedit_app.core.workspace_paths import WorkspacePaths
-from ReviewInterface.dubbingedit_app.utils.audio_edit import export_segment_wav
+# from ReviewInterface.dubbingedit_app.utils.audio_edit import export_segment_wav
 
+# @lru_cache(maxsize=None)
+# def _load_module(path: str):
+#     return import_module(path)
+#
+# def _get_attr(module_path: str, attr_name: str):
+#     return getattr(_load_module(module_path), attr_name)
 
 
 # 配音线程
@@ -70,6 +80,8 @@ class RedubbingThread(QThread):
             self.error.emit(str(e))
 
 
+
+
 # 重新配音模态框
 class RedubbingDialog(QMainWindow):
     replace_requested = pyqtSignal()  # 替换信号
@@ -92,6 +104,26 @@ class RedubbingDialog(QMainWindow):
 
         self._init_ui()
         # self._setup_elevenlabs()
+
+    def set_properties(self, voice_ids=None, text="", start_ms=0, end_ms=0, vocal_audio_path=None):
+        """设置对话框属性，用于复用窗口"""
+        self.voice_ids = voice_ids if voice_ids else {}
+        self.text = text
+        self.start_ms = start_ms
+        self.end_ms = end_ms
+        self.vocal_audio_path = vocal_audio_path
+        self.generated_audio_bytes = None
+        self.temp_audio_path = None
+        self.is_processing = False
+
+        # 更新UI
+        self._populate_roles()
+        self.text_preview.setPlainText(text)
+        self._set_buttons_enabled(True)
+        self.preview_btn.setEnabled(False)
+        self.replace_btn.setEnabled(False)
+        self.progress_label.setText("")
+        self.progress_ring.hide()
 
     def _setup_elevenlabs(self):
         from Service.dubbingMain.dubbingElevenlabs3 import dubbingElevenLabs3
@@ -117,6 +149,15 @@ class RedubbingDialog(QMainWindow):
         self.role_combo = ComboBox(self)
         self._populate_roles()
         layout.addWidget(self.role_combo)
+
+        self.no_outer_voice = "点击选择其他声音"
+        self.all_role_combo = ComboBox(self)
+        self.all_role_combo.clicked.connect(self._select_voice)
+        self.all_role_combo.setText(self.no_outer_voice)
+        layout.addWidget(self.all_role_combo)
+        self.voice_selector_window = None
+        self.outer_voice_id = None
+
 
         # 文本预览
         text_label = BodyLabel("配音文本:", self)
@@ -175,6 +216,42 @@ class RedubbingDialog(QMainWindow):
         self._timer.setSingleShot(True)
         self._timer.timeout.connect(self._stop_preview)
 
+
+    def _select_voice(self):
+        # VoiceSelectorWindow = _get_attr("Compoment.DubbingConfigs", "VoiceSelectorWindow")
+        from Compoment.DubbingConfigs import VoiceSelectorWindow
+
+        if self.voice_selector_window is not None and isinstance(self.voice_selector_window, VoiceSelectorWindow):
+            self.voice_selector_window.show()
+        else:
+
+            self.voice_selector_window = VoiceSelectorWindow()
+            self.voice_selector_window.setWindowModality(Qt.ApplicationModal)
+            self.voice_selector_window.show()
+            self.voice_selector_window.return_signal2.connect(self.set_combobox_text)
+            self.voice_selector_window._on_pull_voice_finished("成功")
+
+
+
+    def set_combobox_text(self, voice_name, voice_id):
+        print(voice_name, voice_id)
+        exclude_voice = {"自动克隆", "不配音"}
+        if voice_name in exclude_voice:
+            InfoBar.warning(
+                title="警告",
+                content="不支持该选项, 回退为默认",
+                orient=Qt.Horizontal,
+                isClosable=True,
+                position=InfoBarPosition.TOP_RIGHT,
+                duration=2000,
+                parent=self,
+            )
+            self.all_role_combo.setText(self.no_outer_voice)
+            self.outer_voice_id = None
+            return
+        self.all_role_combo.setText(voice_name)
+        self.outer_voice_id = voice_id
+
     def _populate_roles(self):
         self.role_combo.clear()
         for role_name in sorted(self.voice_ids.keys()):
@@ -183,6 +260,7 @@ class RedubbingDialog(QMainWindow):
     def _on_play_original(self):
         if not self.vocal_audio_path:
             return
+        self._player.setMedia(QMediaContent())  # 先解除绑定
         self._player.setMedia(QMediaContent(QUrl.fromLocalFile(self.vocal_audio_path)))
         self._player.setPosition(self.start_ms)
         self._player.play()
@@ -209,7 +287,11 @@ class RedubbingDialog(QMainWindow):
             )
             return
 
-        voice_id = selected_data
+        if self.outer_voice_id:
+            voice_id = self.outer_voice_id
+        else:
+            voice_id = selected_data
+
         text = self.text_preview.toPlainText()
 
         # 标记为处理中
@@ -276,6 +358,7 @@ class RedubbingDialog(QMainWindow):
     def _on_preview_new(self):
         if not self.temp_audio_path:
             return
+        self._player.setMedia(QMediaContent())  # 先解除绑定
         self._player.setMedia(QMediaContent(QUrl.fromLocalFile(self.temp_audio_path)))
         self._player.play()
 
@@ -309,8 +392,7 @@ class RedubbingDialog(QMainWindow):
         self.show()  # 重新显示窗口以应用窗口标志
 
     def closeEvent(self, event):
-        print("调用我")
-        """重写关闭事件"""
+        """重写关闭事件 - 隐藏窗口而不是关闭"""
         if self.is_processing:
             # 如果正在处理中，阻止关闭
             from qfluentwidgets import InfoBar, InfoBarPosition
@@ -324,28 +406,35 @@ class RedubbingDialog(QMainWindow):
                 parent=self,
             )
             event.ignore()
-        else:
-            # 正常关闭
-            self.cancel_requested.emit()
-            super().closeEvent(event)
+            return
 
-    def get_generated_audio(self) -> Optional[bytes]:
-        return self.generated_audio_bytes
-
-    def closeEvent(self, event):
+        # 停止播放
         self._stop_preview()
+
+        # 清理临时文件
         if hasattr(self, 'temp_audio_path') and self.temp_audio_path and os.path.exists(self.temp_audio_path):
             try:
                 os.remove(self.temp_audio_path)
             except Exception:
                 pass
-        super().closeEvent(event)
+            self.temp_audio_path = None
+
+        # 发送取消信号
+        self.cancel_requested.emit()
+
+        # 隐藏窗口而不是关闭
+        event.ignore()
+        self.hide()
+
+    def get_generated_audio(self) -> Optional[bytes]:
+        return self.generated_audio_bytes
 
 
 class EditPanel(QWidget):
     """底部字幕编辑：文本、倍速、本段预览、提交、下载。"""
 
-    submit_requested = pyqtSignal(int, str, float)
+    submit_requested = pyqtSignal(int, str, float, object)
+    pause = pyqtSignal()
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
@@ -377,9 +466,9 @@ class EditPanel(QWidget):
 
         self._speed = DoubleSpinBox(self)
         self._speed.setRange(0.5, 2.0)
-        self._speed.setSingleStep(0.1)
+        self._speed.setSingleStep(0.05)
         self._speed.setValue(1.0)
-        self._speed.setDecimals(1)
+        self._speed.setDecimals(3)
         self._speed.valueChanged.connect(self._update_time_display)
 
         self._preview_btn = PushButton("预览本段配音", self)
@@ -441,8 +530,14 @@ class EditPanel(QWidget):
         self._overlay.hide()
         self._overlay.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
-        self.setMinimumHeight(200)
+        self.setMinimumHeight(120)
         self._set_enabled(False)
+
+        # 创建重新配音对话框（复用）
+        self._redub_dialog = RedubbingDialog(self)
+        self._redub_dialog.replace_requested.connect(self._handle_redub_replace)
+        self._redub_dialog.cancel_requested.connect(lambda: None)
+        self._redub_dialog.hide()
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
@@ -541,29 +636,55 @@ class EditPanel(QWidget):
         self._duration_label.setText(f"时长: {duration_sec:.3f}s ({speed:.1f}x)")
 
     def _on_preview(self) -> None:
+        self.pause.emit()
         if not self._paths or self._index < 0:
             return
         rate = float(self._speed.value())
-        self._preview_player.setMedia(QMediaContent(QUrl.fromLocalFile(self._paths.dub_vocal_audio)))
-        self._preview_player.setPlaybackRate(max(0.5, min(2.0, rate)))
-        self._preview_player.setPosition(self._start_ms)
+
+        # 获取音频数据
+        if self._redubbed_audio_bytes:
+            # 从重配音的 bytes 加载
+            audio, sr = librosa.load(io.BytesIO(self._redubbed_audio_bytes), sr=None)
+        else:
+            # 从原始配音文件加载并截取片段
+            audio_full, sr = librosa.load(self._paths.dub_vocal_audio, sr=None)
+            start_sample = int(self._start_ms * sr / 1000)
+            end_sample = int(self._end_ms * sr / 1000)
+            audio = audio_full[start_sample:end_sample]
+
+        # 使用 pyrubberband 进行变速处理
+        if abs(rate - 1.0) >= 1e-6:
+            audio = pyrb.time_stretch(audio, sr, rate)
+
+        # 写入临时文件
+        temp_path = tempfile.mktemp(suffix=".wav")
+        sf.write(temp_path, audio, sr)
+
+        # 播放处理后的音频
+        self._preview_player.setMedia(QMediaContent())
+        self._preview_player.setMedia(QMediaContent(QUrl.fromLocalFile(temp_path)))
         self._preview_player.play()
-        wall_ms = max(1, int((self._end_ms - self._start_ms) / rate))
-        self._preview_timer.start(wall_ms + 80)
+
+        # 播放结束后删除临时文件
+        def cleanup():
+            try:
+                os.remove(temp_path)
+            except:
+                pass
+        self._preview_player.stateChanged.connect(
+            lambda state: cleanup() if state == QMediaPlayer.StoppedState else None
+        )
 
     def _stop_preview(self) -> None:
         self._preview_player.stop()
 
     def _on_submit(self) -> None:
+        self.pause.emit()
         if not self._paths or self._index < 0:
             return
         self.set_submit_busy(True)
-        # 如果有重新配音的音频，使用调整后的速度
-        if self._redubbed_audio_bytes:
-            speed = self.current_speed()
-            self.submit_requested.emit(self._index, self.current_text(), speed)
-        else:
-            self.submit_requested.emit(self._index, self.current_text(), self.current_speed())
+        # 传递重新配音的音频数据（可能为None）
+        self.submit_requested.emit(self._index, self.current_text(), self.current_speed(), self._redubbed_audio_bytes)
 
     def _on_download(self) -> None:
         if not self._paths or self._index < 0:
@@ -576,8 +697,23 @@ class EditPanel(QWidget):
         )
         if not path:
             return
+
         try:
-            export_segment_wav(self._paths.dub_vocal_audio, self._start_ms, self._end_ms, path)
+            rate = float(self._speed.value())
+
+            if self._redubbed_audio_bytes:
+                seg = AudioSegment.from_file(io.BytesIO(self._redubbed_audio_bytes), format="mp3")
+            else:
+                audio = AudioSegment.from_file(self._paths.dub_vocal_audio)
+                seg = audio[self._start_ms: self._original_end_ms]
+
+            if abs(rate - 1.0) >= 1e-6:
+                new_frame_rate = int(seg.frame_rate * rate)
+                stretched = seg._spawn(seg.raw_data, overrides={"frame_rate": new_frame_rate})
+                seg = stretched.set_frame_rate(seg.frame_rate)
+
+            seg.export(path, format="wav")
+
             from qfluentwidgets import InfoBar, InfoBarPosition
 
             InfoBar.success(
@@ -603,6 +739,7 @@ class EditPanel(QWidget):
             )
 
     def _on_redub(self) -> None:
+        self.pause.emit()
         if not self._paths or self._index < 0 or not self._current_subtitle:
             return
 
@@ -620,25 +757,21 @@ class EditPanel(QWidget):
             )
             return
 
-        # 显示重新配音模态框
-        dialog = RedubbingDialog(
-            self,
+        # 复用现有的重新配音对话框
+        self._redub_dialog.set_properties(
             voice_ids=self._paths.voice_ids_mapping,
             text=self.current_text(),
             start_ms=self._start_ms,
             end_ms=self._end_ms,
             vocal_audio_path=self._paths.dub_vocal_audio
         )
+        self._redub_dialog.show()
+        self._redub_dialog.raise_()
+        self._redub_dialog.activateWindow()
 
-        # 连接信号
-        dialog.replace_requested.connect(lambda: self._handle_redub_replace(dialog))
-        dialog.cancel_requested.connect(lambda: None)  # 取消不做任何操作
-
-        dialog.show()
-
-    def _handle_redub_replace(self, dialog):
+    def _handle_redub_replace(self):
         """处理重新配音的替换操作"""
-        audio_bytes = dialog.get_generated_audio()
+        audio_bytes = self._redub_dialog.get_generated_audio()
         if audio_bytes:
             # 保存重新配音的音频，但不立即提交
             self._redubbed_audio_bytes = audio_bytes

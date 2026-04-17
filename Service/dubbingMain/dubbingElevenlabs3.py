@@ -4,6 +4,7 @@ import datetime
 import io
 import json
 import os
+import time
 import traceback
 
 import librosa
@@ -375,7 +376,6 @@ class dubbingElevenLabs3(dubbingInterface):
                         # voice_settings=voice_setting,
                         # previous_request_ids=previous_dict[role][-3:])
 
-                    request_id = audio._response.headers.get("request-id")
 
                     time_alignments = audio.data.normalized_alignment
                     audio_bytes = base64.b64decode(audio.data.audio_base_64)
@@ -402,6 +402,7 @@ class dubbingElevenLabs3(dubbingInterface):
                             print("-这句过于异常，取消配音")
                             break
                     else:
+                        request_id = audio._response.headers.get("request-id")   # 重新配音时，不要修改requestid
                         circle = False
 
                 print("*时长判定结束")
@@ -462,7 +463,7 @@ class dubbingElevenLabs3(dubbingInterface):
             target_subtitles_path = os.path.join(result_dir, "字幕-合并后的配音字幕.txt")
             modified_subtitles_path = os.path.join(result_dir, "字幕-cps.txt")
             modified_subtitles_path2 = os.path.join(result_dir, "字幕-cps+角色.txt")
-            copyed_video_path = os.path.join(result_dir, "原视频.mp4")
+            copyed_video_path = os.path.join(result_dir, "{}-原视频.mp4".format(os.path.basename(video_path).split('.')[0]))
 
 
             print(output_audio_file)
@@ -562,7 +563,8 @@ class dubbingElevenLabs3(dubbingInterface):
             if not voice_ids[key]:
                 voice_id = self.clone_text(key, role_audio_path[key], timestamp)
                 voice_ids[key] = voice_id
-                db_connect.save_voice_id(api_id=1, voice_name="{}-{}".format(key, timestamp), voice_id=voice_id)
+                db_connect.save_voice_id_withtime(api_id=1, voice_name="{}-{}".format(key, timestamp),
+                                                  voice_id=voice_id, create_time=int(time.time()))
         return voice_ids
 
     def get_audio_duration_for_target_size(self, audio_path: str, target_size_bytes: int) -> float:
