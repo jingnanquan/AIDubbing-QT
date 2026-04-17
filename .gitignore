@@ -5,6 +5,9 @@
 # 忽略工作区文件
 *.code-workspace
 
+*.env
+*mydb*
+
 # 忽略 .idea
 .idea/
 
